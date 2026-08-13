@@ -86,7 +86,9 @@ export async function renderSetup(id) {
         { class: 'voice-rows' },
         others.map((character) => {
           const select = h('select', { class: 'voice-select', 'aria-label': `Voice for ${character.name}` });
-          select.append(...pool.map((voice) => h('option', { value: voice.voiceURI }, voice.name)));
+          select.append(
+            ...pool.map((voice) => h('option', { value: voice.voiceURI }, voiceLabel(voice))),
+          );
           select.value = voiceByCharacterId[character.id] ?? pool[0].voiceURI;
           select.addEventListener('change', () => {
             voiceByCharacterId[character.id] = select.value;
@@ -166,6 +168,19 @@ export async function renderSetup(id) {
   );
 }
 
+
+/**
+ * Platform voice names are built for a settings panel, not a cast list:
+ * "Microsoft David - English (United States)". Keep the name, drop the vendor
+ * and the restated language.
+ */
+export function voiceLabel(voice) {
+  const name = voice.name
+    .replace(/^(Microsoft|Google|Apple|Samsung|Amazon)\s+/i, '')
+    .replace(/\s*[-–(].*$/, '')
+    .trim();
+  return name || voice.name;
+}
 
 const notFound = () =>
   h(

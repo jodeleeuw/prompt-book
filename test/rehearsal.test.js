@@ -223,3 +223,18 @@ test('the pool falls back to every voice when none match the language', () => {
 test('no voices at all yields no assignment rather than throwing', () => {
   assert.deepEqual(assignVoices([{ id: '1' }], []), { 1: null });
 });
+
+// --- voice names ------------------------------------------------------------
+
+const { voiceLabel } = await import('../src/ui/setup-view.js');
+
+test('voice names are trimmed to something that reads as a cast list', () => {
+  assert.equal(voiceLabel({ name: 'Microsoft David - English (United States)' }), 'David');
+  assert.equal(voiceLabel({ name: 'Google UK English Female' }), 'UK English Female');
+  assert.equal(voiceLabel({ name: 'Daniel (Enhanced)' }), 'Daniel');
+  assert.equal(voiceLabel({ name: 'Samantha' }), 'Samantha');
+});
+
+test('a name that trims to nothing keeps the original', () => {
+  assert.equal(voiceLabel({ name: 'Google' }), 'Google');
+});

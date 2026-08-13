@@ -4,6 +4,7 @@ import { parseScript, detectFormat, FORMATS } from '../parse/index.js';
 import { commitDraft } from '../parse/draft.js';
 import { createScript } from '../store/library.js';
 import { promptForText, notify } from './confirm.js';
+import { SAMPLE_SCRIPT, SAMPLE_TITLE } from './sample-script.js';
 import { navigate } from './router.js';
 
 const DIRECTION = '__direction';
@@ -97,6 +98,25 @@ export async function renderImport() {
             },
           },
           'Parse',
+        ),
+      ),
+      h(
+        'section',
+        { class: 'panel' },
+        h('h2', { class: 'panel-title' }, 'Or try one'),
+        h(
+          'p',
+          { class: 'note' },
+          'A two-hander to see how a run works before importing anything of your own.',
+        ),
+        h(
+          'button',
+          {
+            class: 'button',
+            type: 'button',
+            onclick: () => build(SAMPLE_SCRIPT, 'text', SAMPLE_TITLE),
+          },
+          `Load “${SAMPLE_TITLE}”`,
         ),
       ),
     );

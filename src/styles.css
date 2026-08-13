@@ -125,7 +125,7 @@ body.rehearsing .offline-banner {
 
 .title {
   font-family: var(--serif);
-  font-size: clamp(2rem, 6vw, 2.75rem);
+  font-size: 2.25rem;
   font-weight: 400;
   letter-spacing: -0.015em;
   text-wrap: balance;
@@ -277,7 +277,7 @@ body.rehearsing .offline-banner {
 
 .title-input {
   font-family: var(--serif);
-  font-size: clamp(1.6rem, 5vw, 2.1rem);
+  font-size: 1.9rem;
 }
 
 .paste {

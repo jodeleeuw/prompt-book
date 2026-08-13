@@ -77,6 +77,7 @@ const emptyState = () =>
       { class: 'note' },
       'Nothing is discarded without showing you first — you correct anything the parser guesses wrong before it is saved.',
     ),
+    h('a', { class: 'button', href: '#/import' }, 'Try a sample scene'),
   );
 
 const scriptList = (scripts, resume) =>
