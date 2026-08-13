@@ -20,6 +20,19 @@ export const HIDE_LEVELS = [
   { id: 'hidden', label: 'Hidden', hint: 'Rhythm and punctuation only.' },
 ];
 
+export const VOICE_QUALITY = [
+  {
+    id: 'device',
+    label: 'Device voices',
+    hint: 'Instant, offline, no download. Quality depends on what is installed.',
+  },
+  {
+    id: 'high',
+    label: 'High quality (downloads ~100MB once)',
+    hint: 'A neural voice model, run on this device. Better and more natural, but the first run downloads about 100MB and needs a connection to do it.',
+  },
+];
+
 export const STAGE_GROUNDS = [
   {
     id: 'dark',
@@ -35,7 +48,13 @@ export const SILENCE_CHOICES = [
   { id: 4000, label: 'Unhurried', hint: 'Moves on 4s after you stop — room to breathe.' },
 ];
 
-const DEFAULTS = { theme: 'system', hideLevel: 'full', silenceMs: 2500, stage: 'dark' };
+const DEFAULTS = {
+  theme: 'system',
+  hideLevel: 'full',
+  silenceMs: 2500,
+  stage: 'dark',
+  voiceQuality: 'device',
+};
 
 let cache = null;
 
@@ -64,6 +83,9 @@ function sanitise(settings) {
     settings.stage = DEFAULTS.stage;
   }
   if (!THEMES.some((theme) => theme.id === settings.theme)) settings.theme = DEFAULTS.theme;
+  if (!VOICE_QUALITY.some((v) => v.id === settings.voiceQuality)) {
+    settings.voiceQuality = DEFAULTS.voiceQuality;
+  }
   return settings;
 }
 

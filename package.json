@@ -21,6 +21,7 @@
     "vite": "^8.2.1"
   },
   "dependencies": {
+    "kokoro-js": "^1.2.1",
     "tesseract.js": "^7.0.0"
   }
 }

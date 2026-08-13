@@ -996,3 +996,8 @@ body.rehearsing .offline-banner {
   white-space: pre-wrap;
   overflow-x: auto;
 }
+
+.warn-note {
+  color: var(--danger);
+  margin-bottom: 0.75rem;
+}

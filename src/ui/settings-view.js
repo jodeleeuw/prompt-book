@@ -5,6 +5,7 @@ import {
   updateSettings,
   THEMES,
   STAGE_GROUNDS,
+  VOICE_QUALITY,
   HIDE_LEVELS,
   SILENCE_CHOICES,
 } from '../store/settings.js';
@@ -42,8 +43,16 @@ export async function renderSettings() {
       'Rehearsal ground',
       'Running a scene is its own room. The device usually sits a metre away in low light, so the stage is dark whatever the app theme is.',
       STAGE_GROUNDS,
+  VOICE_QUALITY,
       settings.stage,
       'stage',
+    ),
+    group(
+      'Voices',
+      'How the other characters are spoken. High quality runs a neural model on this device — nothing is uploaded, but the model itself is downloaded once from Hugging Face.',
+      VOICE_QUALITY,
+      settings.voiceQuality,
+      'voiceQuality',
     ),
     group(
       'Your lines',

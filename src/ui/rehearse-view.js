@@ -5,6 +5,7 @@ import { maskLine } from './mask.js';
 import { loadVoices, createSpeaker, isSupported as canSpeak } from '../speech/tts.js';
 import { createListener, isSupported as canListen } from '../speech/stt.js';
 import { assignVoices, findVoice } from '../speech/voices.js';
+import { assignKokoroVoices } from '../speech/kokoro-voices.js';
 import { createRehearsal, runningOrder } from '../engine/rehearsal.js';
 import { createCueing } from '../engine/cueing.js';
 import { createWakeLock } from '../platform/wake-lock.js';
@@ -50,11 +51,18 @@ export async function renderRehearse(id) {
   // Assigned once the voice list resolves; every handler no-ops until then.
   let engine = null;
   let speaker = null;
+  let highQuality = false;
+  let voiceNote = null;
+  let loadNote = null;
   let listener = null;
   let cueing = null;
   let silent = false;
 
   const wakeLock = createWakeLock();
+
+  // With no voices at all every line becomes one you read and tap past, so the
+  // whole run counts as yours. Reads `silent`, which init() settles.
+  const isUserLine = (line) => silent || line.characterId === script.userCharacterId;
 
   // Where this script was left, if it was left part-way through.
   const stored = getLastRun();
@@ -99,12 +107,18 @@ export async function renderRehearse(id) {
 
     // With no voices there is nothing to perform the other parts, so every line
     // becomes one you read and tap past, rather than failing on the first cue.
-    silent = !canSpeak() || !voices.length;
-    voiceWanted = canListen() && !silent;
+    const deviceSpeaker = () =>
+      createSpeaker({ voiceFor: (line) => findVoice(voices, assignment[line.characterId]) });
 
-    speaker = createSpeaker({
-      voiceFor: (line) => findVoice(voices, assignment[line.characterId]),
-    });
+    if (settings.voiceQuality === 'high') {
+      speaker = await highQualitySpeaker(deviceSpeaker);
+    } else {
+      speaker = deviceSpeaker();
+    }
+
+    // A neural voice does not depend on the device having any voices installed.
+    silent = !highQuality && (!canSpeak() || !voices.length);
+    voiceWanted = canListen() && !silent;
 
     listener = canListen()
       ? createListener({
@@ -127,13 +141,53 @@ export async function renderRehearse(id) {
 
     engine = createRehearsal({
       lines,
-      isUserLine: silent ? () => true : (line) => line.characterId === script.userCharacterId,
+      isUserLine,
       speak: speaker.speak,
       cancel: speaker.cancel,
       onChange: sync,
     });
 
     sync(engine.state);
+    // So the opening line is ready the moment they tap Begin.
+    if (lines[0] && !isUserLine(lines[0])) speaker?.prefetch?.(lines[0]);
+  }
+
+  /**
+   * Load the neural model, falling back to the device's own voices if it will
+   * not run. The download is large and needs a connection, so failing here is
+   * ordinary rather than exceptional — it must not cost you the rehearsal.
+   */
+  async function highQualitySpeaker(deviceSpeaker) {
+    const { createKokoroSpeaker, loadKokoro, isSupported: canRun } = await import(
+      '../speech/kokoro.js'
+    );
+
+    if (!canRun()) {
+      voiceNote = 'This browser cannot run the high quality voice. Using device voices.';
+      return deviceSpeaker();
+    }
+
+    const kokoro = assignKokoroVoices(script.characters);
+    const onProgress = ({ stage, progress }) => {
+      loadNote = `${stage} ${Math.round((progress ?? 0) * 100)}%`;
+      paintLoading();
+    };
+
+    try {
+      loadNote = 'starting';
+      paintLoading();
+      await loadKokoro({ onProgress });
+      highQuality = true;
+      loadNote = null;
+      return createKokoroSpeaker({
+        voiceFor: (line) => kokoro[line.characterId],
+        onProgress,
+      });
+    } catch (error) {
+      loadNote = null;
+      voiceNote = `High quality voice unavailable (${error.message ?? error}). Using device voices.`;
+      return deviceSpeaker();
+    }
   }
 
   const cueingAvailable = () =>
@@ -160,6 +214,8 @@ export async function renderRehearse(id) {
     if (micStatus === 'denied' || micStatus === 'error') micStatus = 'idle'; // let them retry
     else voiceWanted = !voiceWanted;
     sync(engine.state);
+    // So the opening line is ready the moment they tap Begin.
+    if (lines[0] && !isUserLine(lines[0])) speaker?.prefetch?.(lines[0]);
   }
 
   function cycleHideLevel() {
@@ -195,8 +251,14 @@ export async function renderRehearse(id) {
     sceneLabel.textContent = chosen[0]?.title ?? '';
     stage.replaceChildren(
       group(
-        h('p', { class: 'cue' }, 'Finding voices…'),
-        h('p', { class: 'hint' }, 'Reading the voices installed on this device.'),
+        h('p', { class: 'cue' }, loadNote ? 'Fetching the voice model…' : 'Finding voices…'),
+        h(
+          'p',
+          { class: 'hint' },
+          loadNote
+            ? `${loadNote} — about 100MB, downloaded once and kept for next time.`
+            : 'Reading the voices installed on this device.',
+        ),
       ),
     );
     stage.classList.remove('tappable');
@@ -217,8 +279,19 @@ export async function renderRehearse(id) {
       stopPeeking();
     }
     applyCueing(state);
+    prefetchNext(state);
     remember(state);
     render(state);
+  }
+
+  /**
+   * Generation runs at roughly 2.5x realtime, so a line started when it is
+   * already due would arrive late. Building the next one while the current
+   * one plays keeps it ahead of the scene.
+   */
+  function prefetchNext(state) {
+    const next = lines[state.index + 1];
+    if (next && !isUserLine(next)) speaker?.prefetch?.(next);
   }
 
   /** A finished run is not a place to come back to. */
@@ -326,6 +399,7 @@ export async function renderRehearse(id) {
   function stageContent(state) {
     if (state.status === 'idle') {
       return group(
+        voiceNote && h('p', { class: 'hint warn-note' }, voiceNote),
         h('p', { class: 'cue' }, silent ? 'Silent run' : 'Ready'),
         h(
           'p',
@@ -435,6 +509,7 @@ export async function renderRehearse(id) {
   // screen sleep again — a hash change does none of them.
   const teardown = () => {
     engine?.stop();
+    speaker?.close?.();
     speaker?.cancel();
     cueing?.cancel();
     listener?.stop();

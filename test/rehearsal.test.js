@@ -238,3 +238,41 @@ test('voice names are trimmed to something that reads as a cast list', () => {
 test('a name that trims to nothing keeps the original', () => {
   assert.equal(voiceLabel({ name: 'Google' }), 'Google');
 });
+
+// --- neural voice assignment -------------------------------------------------
+
+const { assignKokoroVoices, KOKORO_VOICES, kokoroVoice } = await import(
+  '../src/speech/kokoro-voices.js'
+);
+
+test('each character gets a different neural voice', () => {
+  const assignment = assignKokoroVoices([{ id: '1' }, { id: '2' }, { id: '3' }]);
+  assert.equal(new Set(Object.values(assignment)).size, 3);
+});
+
+test('the voice order alternates gender rather than ranking purely by grade', () => {
+  // The best-graded voices are all female; handing a whole scene to one gender
+  // would make the characters harder to tell apart than a lower grade does.
+  const [first, second] = KOKORO_VOICES;
+  assert.notEqual(first.gender, second.gender);
+});
+
+test('no voice graded below C is offered', () => {
+  for (const voice of KOKORO_VOICES) {
+    assert.ok(/^[ABC]/.test(voice.grade), `${voice.id} is graded ${voice.grade}`);
+  }
+});
+
+test('a saved voice is kept, but only while it is still offered', () => {
+  const assignment = assignKokoroVoices([
+    { id: '1', kokoroVoice: 'bf_emma' },
+    { id: '2', kokoroVoice: 'am_retired' },
+  ]);
+  assert.equal(assignment['1'], 'bf_emma');
+  assert.ok(KOKORO_VOICES.some((v) => v.id === assignment['2']), 'a stale voice is replaced');
+});
+
+test('an unknown voice id resolves to something usable rather than undefined', () => {
+  assert.ok(kokoroVoice('nonsense').id);
+  assert.equal(kokoroVoice('bf_emma').label, 'Emma');
+});
