@@ -3,6 +3,7 @@ import { segmentParens } from '../parse/lines.js';
 import { parseScript, detectFormat, FORMATS } from '../parse/index.js';
 import { commitDraft } from '../parse/draft.js';
 import { createScript } from '../store/library.js';
+import { promptForText, notify } from './confirm.js';
 import { navigate } from './router.js';
 
 const DIRECTION = '__direction';
@@ -24,7 +25,10 @@ export async function renderImport() {
   const build = (text, format, fallbackTitle) => {
     const parsed = parseScript(text, format);
     if (!parsed.scenes.length) {
-      alert('Nothing recognisable in there. Check that it contains dialogue.');
+      notify({
+        title: 'Nothing to import',
+        body: 'No dialogue was recognised. Plain text needs a character name and a colon, like “MIRA: Breathe.”',
+      });
       return;
     }
     draft = {
@@ -194,17 +198,19 @@ export async function renderImport() {
       h('option', { value: NEW_CHARACTER }, '+ new character…'),
     );
     select.value = line.kind === 'direction' ? DIRECTION : line.character;
-    select.addEventListener('change', () => {
+    select.addEventListener('change', async () => {
       if (select.value === DIRECTION) {
         line.kind = 'direction';
         line.character = null;
         redraw();
       } else if (select.value === NEW_CHARACTER) {
-        const name = prompt('Character name')?.trim();
-        if (!name) {
-          select.value = line.kind === 'direction' ? DIRECTION : line.character;
-          return;
-        }
+        select.value = line.kind === 'direction' ? DIRECTION : line.character; // until it is named
+        const name = await promptForText({
+          title: 'New character',
+          label: 'Character name',
+          confirmLabel: 'Add character',
+        });
+        if (!name) return;
         if (!draft.characters.includes(name)) draft.characters.push(name);
         assign(line, name);
         update(); // every other select needs the new option
@@ -256,7 +262,10 @@ export async function renderImport() {
   async function save() {
     const committed = commitDraft(draft);
     if (!committed.scenes.length) {
-      alert('Nothing to save — every line is marked as a stage direction.');
+      notify({
+        title: 'Nothing to save',
+        body: 'Every line is currently marked as a stage direction. Assign at least one to a character first.',
+      });
       return;
     }
     const id = await createScript(committed);

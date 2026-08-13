@@ -789,3 +789,210 @@ body.rehearsing .offline-banner {
   text-decoration: none;
   border-bottom: 1px dotted var(--accent);
 }
+
+/* --- resume -------------------------------------------------------------- */
+
+.resume {
+  display: block;
+  margin-bottom: 2rem;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.resume:hover {
+  background: color-mix(in oklab, var(--accent) 8%, transparent);
+}
+
+.resume-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.resume-title {
+  display: block;
+  font-family: var(--serif);
+  font-size: 1.35rem;
+  margin-top: 0.15rem;
+}
+
+.resume-meta {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* --- dialogs and undo ---------------------------------------------------- */
+
+.sheet {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  max-width: min(28rem, calc(100vw - 2rem));
+}
+
+.sheet::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+
+.sheet-panel {
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 1.5rem;
+}
+
+.sheet-title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 1.3rem;
+  margin: 0 0 0.4rem;
+}
+
+.sheet-input {
+  font: inherit;
+  width: 100%;
+  margin: 1rem 0 0;
+  padding: 0.6rem 0.7rem;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+
+.sheet-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.sheet-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.toast {
+  position: fixed;
+  inset: auto 1rem calc(1rem + env(safe-area-inset-bottom));
+  z-index: 20;
+  max-width: 32rem;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 3px;
+  font-size: 0.85rem;
+  animation: toast-in 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+}
+
+.toast-undo {
+  font: inherit;
+  font-weight: 500;
+  flex: none;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}
+
+/* --- correcting a line --------------------------------------------------- */
+
+.reading-hint {
+  margin: 2rem 0 -1rem;
+}
+
+.speech.editable {
+  display: block;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: text;
+}
+
+.speech.editable:hover {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--faint);
+}
+
+.line-editor {
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.5rem 0.6rem;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  resize: vertical;
+}
+
+.line-editor-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.saved {
+  margin-left: 0.6rem;
+  color: var(--accent);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.speaker.mine,
+.chip.mine {
+  color: var(--accent);
+}
+
+.chip.mine {
+  border-color: var(--accent);
+}
+
+.sample {
+  font-family: var(--serif);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 1rem 0;
+  padding: 0.9rem 1rem;
+  background: color-mix(in oklab, var(--ink) 5%, transparent);
+  border-radius: 2px;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}

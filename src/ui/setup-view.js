@@ -149,7 +149,7 @@ export async function renderSetup(id) {
             navigate(`#/script/${script.id}/rehearse`);
           },
         },
-        'Continue',
+        'Start rehearsing',
       ),
       !ready && h('span', { class: 'note' }, 'Choose your character and at least one scene.'),
     );

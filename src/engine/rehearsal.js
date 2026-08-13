@@ -68,9 +68,10 @@ export function createRehearsal({ lines, isUserLine, speak, cancel, onChange }) 
       return snapshot();
     },
 
-    begin() {
+    begin(from) {
       if (status === 'speaking') return;
       interrupt();
+      if (Number.isInteger(from)) return run(Math.min(Math.max(from, 0), lines.length - 1));
       run(status === 'paused' || status === 'error' ? index : 0);
     },
 

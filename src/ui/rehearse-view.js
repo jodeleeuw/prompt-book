@@ -8,6 +8,7 @@ import { assignVoices, findVoice } from '../speech/voices.js';
 import { createRehearsal, runningOrder } from '../engine/rehearsal.js';
 import { createCueing } from '../engine/cueing.js';
 import { createWakeLock } from '../platform/wake-lock.js';
+import { getLastRun, setLastRun, clearLastRun } from '../store/session.js';
 import { navigate } from './router.js';
 
 const PEEK_MS = 3000;
@@ -54,6 +55,13 @@ export async function renderRehearse(id) {
   let silent = false;
 
   const wakeLock = createWakeLock();
+
+  // Where this script was left, if it was left part-way through.
+  const stored = getLastRun();
+  const resumeIndex =
+    stored?.scriptId === script.id && stored.index > 0 && stored.index < lines.length
+      ? stored.index
+      : null;
 
   // ---- chrome -------------------------------------------------------------
 
@@ -133,15 +141,15 @@ export async function renderRehearse(id) {
 
   // ---- controls -----------------------------------------------------------
 
-  function begin() {
+  function begin(from) {
     wakeLock.request(); // taken from the tap, which is when browsers allow it
-    engine.begin();
+    engine.begin(from);
   }
 
   function onAdvanceGesture() {
     if (!engine) return;
     const { status } = engine.state;
-    if (status === 'idle') begin();
+    if (status === 'idle') begin(resumeIndex ?? 0);
     else if (status === 'awaiting') engine.advance();
     else if (status === 'done') engine.restart();
     else if (status === 'error') engine.resume();
@@ -209,7 +217,21 @@ export async function renderRehearse(id) {
       stopPeeking();
     }
     applyCueing(state);
+    remember(state);
     render(state);
+  }
+
+  /** A finished run is not a place to come back to. */
+  function remember(state) {
+    if (state.status === 'done') clearLastRun(script.id);
+    else if (state.status !== 'idle') {
+      setLastRun({
+        scriptId: script.id,
+        index: state.index,
+        total: state.total,
+        sceneTitle: state.line?.sceneTitle ?? null,
+      });
+    }
   }
 
   /**
@@ -309,7 +331,10 @@ export async function renderRehearse(id) {
           'p',
           { class: 'hint' },
           silent
-            ? 'No voices on this device — every line is yours to read. Tap to begin.'
+            ? 'No voices on this device — every line is yours to read. '
+            : '',
+          resumeIndex
+            ? `You stopped at line ${resumeIndex + 1}. Tap anywhere to carry on from there.`
             : 'Tap anywhere to begin.',
         ),
       );
@@ -373,7 +398,14 @@ export async function renderRehearse(id) {
     const control = (label, onclick, disabled = false) =>
       h('button', { class: 'button', type: 'button', disabled, onclick }, label);
 
-    if (state.status === 'idle') return [control('Begin', begin)];
+    if (state.status === 'idle') {
+      return resumeIndex
+        ? [
+            control(`Resume at ${resumeIndex + 1}`, () => begin(resumeIndex)),
+            control('From the top', () => begin(0)),
+          ]
+        : [control('Begin', () => begin(0))];
+    }
     if (state.status === 'done') return [control('Start again', () => engine.restart())];
 
     const isMine = state.line?.characterId === script.userCharacterId;

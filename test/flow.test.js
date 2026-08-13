@@ -13,6 +13,9 @@ globalThis.window = dom.window;
 globalThis.document = dom.window.document;
 globalThis.Node = dom.window.Node;
 globalThis.HTMLElement = dom.window.HTMLElement;
+// Modules reach for the bare global, as they do in a browser. Without this the
+// storage tests pass against an in-memory cache and prove nothing.
+globalThis.localStorage = dom.window.localStorage;
 
 // Dynamic, so the globals above exist before the view modules load.
 const { parseText } = await import('../src/parse/txt.js');
@@ -107,7 +110,10 @@ test('a committed script round-trips through IndexedDB', async () => {
 test('library and script views render the stored script', async () => {
   const library = await renderLibrary();
   assert.match(library.textContent, /Hamlet/);
-  assert.match(library.textContent, /2 scenes · 3 lines · 2 characters/);
+  // Before a character is chosen there is no "yours" to count, so the cast size
+  // stands in. The whole-script line total was never a number anyone wanted.
+  assert.match(library.textContent, /2 scenes · 2 characters/);
+  assert.doesNotMatch(library.textContent, /3 lines/);
 
   const [{ id }] = await listScripts();
   const view = await renderScript(id);
@@ -342,6 +348,86 @@ test('rehearsal claims the whole surface and gives it back on exit', async () =>
 
   window.dispatchEvent(new window.HashChangeEvent('hashchange'));
   assert.equal(document.body.classList.contains('rehearsing'), false);
+
+  await deleteScript(id);
+});
+
+// --- resuming, correcting, undoing ------------------------------------------
+
+const { getLastRun, setLastRun, clearLastRun } = await import('../src/store/session.js');
+const { snapshotScript, restoreScript, updateLine } = await import('../src/store/library.js');
+
+test('the library offers the run you were part-way through', async () => {
+  const id = await twoHander();
+  const { script, scenes } = await loadScript(id);
+  const mira = script.characters.find((c) => c.name === 'MIRA');
+  await saveRehearsalSetup(id, { userCharacterId: mira.id, sceneIds: [scenes[0].id] });
+  setLastRun({ scriptId: id, index: 1, total: 2, sceneTitle: scenes[0].title });
+
+  const view = await renderLibrary();
+  const resume = view.querySelector('.resume');
+  assert.ok(resume, 'a part-finished run should be one tap from the library');
+  assert.equal(resume.getAttribute('href'), `#/script/${id}/rehearse`);
+  assert.match(resume.textContent, /line 2 of 2/);
+  assert.match(view.textContent, /you play MIRA/, 'the count that matters is whose lines they are');
+
+  await deleteScript(id);
+  clearLastRun();
+});
+
+test('a bookmark pointing at a deleted script is forgotten, not shown', async () => {
+  setLastRun({ scriptId: 'gone', index: 3, total: 9, sceneTitle: 'Nowhere' });
+  const view = await renderLibrary();
+  assert.equal(view.querySelector('.resume'), null);
+  assert.equal(getLastRun(), null, 'and it is cleared rather than checked again every visit');
+});
+
+test('a line can be corrected after import', async () => {
+  const id = await twoHander();
+  const { scenes } = await loadScript(id);
+  const line = scenes[0].lines[0];
+
+  await updateLine(scenes[0].id, line.id, 'One. Two ran together here.');
+  const after = await loadScript(id);
+  assert.equal(after.scenes[0].lines[0].text, 'One. Two ran together here.');
+
+  await updateLine(scenes[0].id, line.id, '   ');
+  assert.equal(
+    (await loadScript(id)).scenes[0].lines[0].text,
+    'One. Two ran together here.',
+    'emptying a line is a delete, and is not what the editor is for',
+  );
+
+  await deleteScript(id);
+});
+
+test('a deleted script can be put back exactly as it was', async () => {
+  const id = await twoHander();
+  const before = await snapshotScript(id);
+
+  await deleteScript(id);
+  assert.equal(await loadScript(id), null);
+
+  await restoreScript(before);
+  const after = await loadScript(id);
+  assert.deepEqual(after.script, before.script);
+  assert.deepEqual(after.scenes, before.scenes);
+
+  await deleteScript(id);
+});
+
+test('a deleted scene can be put back, renumbering and counts included', async () => {
+  const id = await threeScenes();
+  const before = await snapshotScript(id);
+  const { scenes } = await loadScript(id);
+
+  await deleteScene(id, scenes[1].id);
+  assert.equal((await loadScript(id)).script.sceneCount, 2);
+
+  await restoreScript(before);
+  const after = await loadScript(id);
+  assert.deepEqual(textsOf(after.scenes), ['One.', 'Two.', 'Three.']);
+  assert.equal(after.script.sceneCount, 3);
 
   await deleteScript(id);
 });

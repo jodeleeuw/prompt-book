@@ -94,6 +94,48 @@ export async function saveRehearsalSetup(scriptId, { userCharacterId, sceneIds, 
   ]);
 }
 
+/**
+ * Everything needed to put a script back exactly as it was. Taken before a
+ * delete so the deletion can be offered as undo rather than as a confirmation
+ * the user has to read.
+ */
+export async function snapshotScript(id) {
+  const script = await db.get('scripts', id);
+  if (!script) return null;
+  return { script, scenes: await scenesOf(id) };
+}
+
+export async function restoreScript(snapshot) {
+  if (!snapshot) return;
+  await db.transact([
+    { store: 'scripts', put: snapshot.script },
+    ...snapshot.scenes.map((scene) => ({ store: 'scenes', put: scene })),
+  ]);
+}
+
+/**
+ * Correct the text of a single line.
+ *
+ * The import preview could reassign a line's character but never fix its
+ * words, so a script where two speeches ran together on one line could only be
+ * deleted and imported again.
+ */
+export async function updateLine(sceneId, lineId, text) {
+  const scene = await db.get('scenes', sceneId);
+  if (!scene) return;
+  const trimmed = text.trim();
+  if (!trimmed) return; // emptying a line is a delete, and has its own path
+  await db.transact([
+    {
+      store: 'scenes',
+      put: {
+        ...scene,
+        lines: scene.lines.map((line) => (line.id === lineId ? { ...line, text: trimmed } : line)),
+      },
+    },
+  ]);
+}
+
 export async function renameScene(sceneId, title) {
   const scene = await db.get('scenes', sceneId);
   if (!scene) return;
