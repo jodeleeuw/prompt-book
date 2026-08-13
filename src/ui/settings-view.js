@@ -4,6 +4,7 @@ import {
   getSettings,
   updateSettings,
   THEMES,
+  STAGE_GROUNDS,
   HIDE_LEVELS,
   SILENCE_CHOICES,
 } from '../store/settings.js';
@@ -37,6 +38,13 @@ export async function renderSettings() {
     h('a', { class: 'back', href: '#/' }, '← Library'),
     h('header', { class: 'masthead' }, h('h1', { class: 'title' }, 'Settings')),
     group('Appearance', null, THEMES, settings.theme, 'theme'),
+    group(
+      'Rehearsal ground',
+      'Running a scene is its own room. The device usually sits a metre away in low light, so the stage is dark whatever the app theme is.',
+      STAGE_GROUNDS,
+      settings.stage,
+      'stage',
+    ),
     group(
       'Your lines',
       'Where a run starts. You can still change it mid-rehearsal.',

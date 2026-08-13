@@ -1,10 +1,10 @@
 import './styles.css';
-import { applyTheme } from './store/settings.js';
+import { applyPreferences } from './store/settings.js';
 import { startRouter } from './ui/router.js';
 import { mountOfflineBanner } from './ui/offline-banner.js';
 import { registerServiceWorker } from './platform/register-sw.js';
 
-applyTheme(); // before the first paint, so the wrong theme never flashes
+applyPreferences(); // before the first paint, so the wrong ground never flashes
 startRouter();
 mountOfflineBanner();
 registerServiceWorker();

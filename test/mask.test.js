@@ -36,3 +36,10 @@ test('long words are capped rather than running off the screen', () => {
 test('an unknown level falls back to showing the line', () => {
   assert.equal(maskLine(LINE, undefined), LINE);
 });
+
+test('a hide level from an older version of the app never reaches the UI', async () => {
+  const { updateSettings, getSettings, hideLevel } = await import('../src/store/settings.js');
+  updateSettings({ hideLevel: 'initials' }); // the level this app used to have
+  assert.equal(getSettings().hideLevel, 'full', 'an unknown level is replaced on write');
+  assert.ok(hideLevel('initials').label, 'and the lookup still returns something renderable');
+});

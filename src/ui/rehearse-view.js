@@ -1,6 +1,6 @@
 import { h } from './dom.js';
 import { loadScript } from '../store/library.js';
-import { getSettings, updateSettings, HIDE_LEVELS } from '../store/settings.js';
+import { getSettings, updateSettings, hideLevel as levelRecord, HIDE_LEVELS } from '../store/settings.js';
 import { maskLine } from './mask.js';
 import { loadVoices, createSpeaker, isSupported as canSpeak } from '../speech/tts.js';
 import { createListener, isSupported as canListen } from '../speech/stt.js';
@@ -11,6 +11,7 @@ import { createWakeLock } from '../platform/wake-lock.js';
 import { navigate } from './router.js';
 
 const PEEK_MS = 3000;
+const TAPPABLE = new Set(['idle', 'awaiting', 'done', 'error']);
 
 export async function renderRehearse(id) {
   const loaded = await loadScript(id);
@@ -29,54 +30,30 @@ export async function renderRehearse(id) {
 
   const settings = getSettings();
   const lang = document.documentElement.lang || 'en';
-  const voices = await loadVoices();
-  const assignment = assignVoices(script.characters, voices, { lang });
   const nameById = new Map(script.characters.map((c) => [c.id, c.name]));
 
-  // With no voices there is nothing to perform the other parts, so every line
-  // becomes one you read and tap past, rather than failing on the first cue.
-  const silent = !canSpeak() || !voices.length;
-  const isUserLine = silent ? () => true : (line) => line.characterId === script.userCharacterId;
-
-  const speaker = createSpeaker({
-    voiceFor: (line) => findVoice(voices, assignment[line.characterId]),
-  });
-  const wakeLock = createWakeLock();
-
-  // ---- view state ---------------------------------------------------------
+  // ---- state --------------------------------------------------------------
 
   let hideLevel = settings.hideLevel;
   let peeking = false;
   let peekTimer = null;
   let lastIndex = -1;
+  let lastAnnounced = null;
 
-  let voiceWanted = canListen() && !silent;
+  let voiceWanted = false;
   let micStatus = 'idle';
   let micDetail = null;
   let online = navigator.onLine !== false;
   let cuedIndex = -1;
 
-  const listener = canListen()
-    ? createListener({
-        lang: !lang || lang === 'en' ? 'en-US' : lang,
-        onResult: (transcript) => cueing.heard(transcript),
-        onStatus: (status, detail) => {
-          micStatus = status;
-          micDetail = detail ?? null;
-          if (status === 'denied') cueing.cancel();
-          renderVoice();
-        },
-      })
-    : null;
+  // Assigned once the voice list resolves; every handler no-ops until then.
+  let engine = null;
+  let speaker = null;
+  let listener = null;
+  let cueing = null;
+  let silent = false;
 
-  const cueing = createCueing({
-    listener,
-    onAdvance: () => engine.advance(),
-    silenceMs: settings.silenceMs,
-  });
-
-  const cueingAvailable = () =>
-    voiceWanted && online && micStatus !== 'denied' && micStatus !== 'error';
+  const wakeLock = createWakeLock();
 
   // ---- chrome -------------------------------------------------------------
 
@@ -84,16 +61,75 @@ export async function renderRehearse(id) {
   const sceneLabel = h('span', { class: 'scene-label' });
   const voiceChip = h('button', { class: 'voice-chip', type: 'button', onclick: toggleVoice });
   const hideChip = h('button', { class: 'hide-chip', type: 'button', onclick: cycleHideLevel });
-  const stage = h('div', { class: 'stage', onclick: onStageClick });
   const transport = h('div', { class: 'transport' });
+  const live = h('p', { class: 'sr-only', role: 'status', 'aria-live': 'polite' });
 
-  const engine = createRehearsal({
-    lines,
-    isUserLine,
-    speak: speaker.speak,
-    cancel: speaker.cancel,
-    onChange: sync,
+  // Not a <button>: the stage holds paragraphs, which button may not contain.
+  const stage = h('div', {
+    class: 'stage',
+    role: 'button',
+    tabindex: '0',
+    onclick: onAdvanceGesture,
+    onkeydown: (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault(); // Space would otherwise scroll the stage
+      onAdvanceGesture();
+    },
   });
+
+  // Rehearsal takes the whole surface: it swaps the palette to the stage
+  // ground and suppresses the global offline banner, which would otherwise sit
+  // on top of the transport.
+  document.body.classList.add('rehearsing');
+
+  paintLoading();
+  init();
+
+  async function init() {
+    const voices = await loadVoices();
+    const assignment = assignVoices(script.characters, voices, { lang });
+
+    // With no voices there is nothing to perform the other parts, so every line
+    // becomes one you read and tap past, rather than failing on the first cue.
+    silent = !canSpeak() || !voices.length;
+    voiceWanted = canListen() && !silent;
+
+    speaker = createSpeaker({
+      voiceFor: (line) => findVoice(voices, assignment[line.characterId]),
+    });
+
+    listener = canListen()
+      ? createListener({
+          lang: !lang || lang === 'en' ? 'en-US' : lang,
+          onResult: (transcript) => cueing?.heard(transcript),
+          onStatus: (status, detail) => {
+            micStatus = status;
+            micDetail = detail ?? null;
+            if (status === 'denied') cueing?.cancel();
+            renderVoice();
+          },
+        })
+      : null;
+
+    cueing = createCueing({
+      listener,
+      onAdvance: () => engine.advance(),
+      silenceMs: settings.silenceMs,
+    });
+
+    engine = createRehearsal({
+      lines,
+      isUserLine: silent ? () => true : (line) => line.characterId === script.userCharacterId,
+      speak: speaker.speak,
+      cancel: speaker.cancel,
+      onChange: sync,
+    });
+
+    sync(engine.state);
+  }
+
+  const cueingAvailable = () =>
+    voiceWanted && online && micStatus !== 'denied' && micStatus !== 'error';
 
   // ---- controls -----------------------------------------------------------
 
@@ -102,8 +138,17 @@ export async function renderRehearse(id) {
     engine.begin();
   }
 
+  function onAdvanceGesture() {
+    if (!engine) return;
+    const { status } = engine.state;
+    if (status === 'idle') begin();
+    else if (status === 'awaiting') engine.advance();
+    else if (status === 'done') engine.restart();
+    else if (status === 'error') engine.resume();
+  }
+
   function toggleVoice() {
-    if (!canListen() || silent) return;
+    if (!engine || !canListen() || silent) return;
     if (micStatus === 'denied' || micStatus === 'error') micStatus = 'idle'; // let them retry
     else voiceWanted = !voiceWanted;
     sync(engine.state);
@@ -114,7 +159,8 @@ export async function renderRehearse(id) {
     hideLevel = HIDE_LEVELS[next].id;
     updateSettings({ hideLevel });
     stopPeeking();
-    render(engine.state);
+    if (engine) render(engine.state);
+    else renderHide();
   }
 
   function peek() {
@@ -134,15 +180,27 @@ export async function renderRehearse(id) {
     peeking = false;
   }
 
-  function onStageClick() {
-    const { status } = engine.state;
-    if (status === 'idle') begin();
-    else if (status === 'awaiting') engine.advance();
-    else if (status === 'done') engine.restart();
-    else if (status === 'error') engine.resume();
-  }
-
   // ---- painting -----------------------------------------------------------
+
+  function paintLoading() {
+    counter.textContent = `${lines.length} lines`;
+    sceneLabel.textContent = chosen[0]?.title ?? '';
+    stage.replaceChildren(
+      group(
+        h('p', { class: 'cue' }, 'Finding voices…'),
+        h('p', { class: 'hint' }, 'Reading the voices installed on this device.'),
+      ),
+    );
+    stage.classList.remove('tappable');
+    stage.setAttribute('aria-label', 'Preparing rehearsal');
+    transport.replaceChildren(
+      h('button', { class: 'button', type: 'button', disabled: true }, 'Begin'),
+    );
+    voiceChip.replaceChildren(h('span', { class: 'dot' }), 'Preparing');
+    voiceChip.className = 'voice-chip muted';
+    voiceChip.disabled = true;
+    renderHide();
+  }
 
   /** State changed: reconcile the microphone, then draw. */
   function sync(state) {
@@ -160,6 +218,7 @@ export async function renderRehearse(id) {
    * so redrawing cannot restart a cue that is already running.
    */
   function applyCueing(state) {
+    if (!cueing) return;
     if (state.status === 'awaiting' && cueingAvailable()) {
       if (cuedIndex === state.index) return;
       cuedIndex = state.index;
@@ -177,9 +236,34 @@ export async function renderRehearse(id) {
     sceneLabel.textContent = state.line?.sceneTitle ?? '';
     stage.replaceChildren(stageContent(state));
     stage.classList.toggle('tappable', TAPPABLE.has(state.status));
+    stage.setAttribute('aria-label', stageAction(state));
     transport.replaceChildren(...transportContent(state));
     renderVoice();
     renderHide();
+    announce(state);
+  }
+
+  /** What a tap or Enter does right now — the stage's accessible name. */
+  function stageAction(state) {
+    if (state.status === 'idle') return 'Begin the run';
+    if (state.status === 'awaiting') return 'I have finished my line — continue';
+    if (state.status === 'done') return 'Run the scene again';
+    if (state.status === 'error') return 'Carry on after the speech error';
+    return 'Rehearsal in progress';
+  }
+
+  /** Announce only whose turn it is, and only when it changes. */
+  function announce(state) {
+    let text = null;
+    if (state.status === 'awaiting') text = `Your line. ${state.line.text}`;
+    else if (state.status === 'speaking') text = `${nameById.get(state.line.characterId) ?? ''} speaking`;
+    else if (state.status === 'done') text = 'End of the run.';
+    else if (state.status === 'error') text = `Speech stopped. ${state.error ?? ''}`;
+
+    const key = `${state.status}:${state.index}`;
+    if (!text || key === lastAnnounced) return;
+    lastAnnounced = key;
+    live.textContent = text;
   }
 
   function renderVoice() {
@@ -190,8 +274,7 @@ export async function renderRehearse(id) {
   }
 
   function renderHide() {
-    const level = HIDE_LEVELS.find((l) => l.id === hideLevel);
-    hideChip.replaceChildren(`Your lines: ${level.label.toLowerCase()}`);
+    hideChip.replaceChildren(`Your lines: ${levelRecord(hideLevel).label.toLowerCase()}`);
   }
 
   function voiceState() {
@@ -206,14 +289,12 @@ export async function renderRehearse(id) {
       return { label: 'Microphone blocked — tap to retry', tone: 'warn', actionable: true };
     }
     if (micStatus === 'error') {
-      return { label: `Microphone trouble: ${micDetail} — tap to retry`, tone: 'warn', actionable: true };
+      return { label: 'Microphone trouble — tap to retry', tone: 'warn', actionable: true };
     }
     if (!voiceWanted) return { label: 'Voice cueing off', tone: 'muted', actionable: true };
     if (micStatus === 'listening') return { label: 'Listening', tone: 'live', actionable: true };
     return { label: 'Voice cueing on', tone: 'muted', actionable: true };
   }
-
-  const TAPPABLE = new Set(['idle', 'awaiting', 'done', 'error']);
 
   const masked = (state) => {
     const mine = state.line.characterId === script.userCharacterId;
@@ -241,9 +322,8 @@ export async function renderRehearse(id) {
     }
     if (state.status === 'error') {
       return group(
-        h('p', { class: 'cue' }, 'Speech stopped.'),
-        h('p', { class: 'hint' }, state.error),
-        h('p', { class: 'hint' }, 'Tap to carry on.'),
+        h('p', { class: 'cue' }, 'The voice stopped.'),
+        h('p', { class: 'hint' }, 'Your place is kept. Tap to carry on, or use Skip to move past this line.'),
       );
     }
 
@@ -251,20 +331,25 @@ export async function renderRehearse(id) {
     const entering = !state.previous || state.previous.sceneId !== state.line.sceneId;
 
     return group(
-      entering && h('p', { class: 'scene-mark' }, state.line.sceneTitle),
-      !entering &&
-        state.previous &&
-        h(
-          'p',
-          { class: 'line previous' },
-          h('span', { class: 'speaker' }, nameById.get(state.previous.characterId) ?? ''),
-          h('span', { class: 'speech' }, state.previous.text),
-        ),
+      entering
+        ? h('p', { class: 'scene-mark' }, state.line.sceneTitle)
+        : // An always-present slot, so the current line never shifts position.
+          h(
+            'p',
+            { class: 'line previous' },
+            state.previous &&
+              h('span', { class: 'speaker' }, nameById.get(state.previous.characterId) ?? ''),
+            state.previous?.text ?? '',
+          ),
       h(
         'p',
         { class: `line current${mine ? ' mine' : ''}${masked(state) ? ' masked' : ''}` },
         h('span', { class: 'speaker' }, mine ? 'You' : (nameById.get(state.line.characterId) ?? '')),
-        h('span', { class: 'speech' }, masked(state) ? maskLine(state.line.text, hideLevel) : state.line.text),
+        h(
+          'span',
+          { class: 'speech' },
+          masked(state) ? maskLine(state.line.text, hideLevel) : state.line.text,
+        ),
       ),
       h('p', { class: 'hint' }, hintFor(state, mine)),
     );
@@ -272,13 +357,18 @@ export async function renderRehearse(id) {
 
   const hintFor = (state, mine) => {
     if (state.status === 'paused') return 'Paused.';
-    if (state.status === 'speaking') return 'Listening to your scene partner…';
+    if (state.status === 'speaking') return 'Your scene partner is speaking…';
     if (!mine) return 'Tap to carry on.';
     return cueingAvailable()
       ? 'Say your line — it moves on when you finish, or tap.'
       : 'Tap anywhere when you have finished the line.';
   };
 
+  /**
+   * Four fixed slots. Peek is disabled rather than removed when it does not
+   * apply, so the buttons never move under a thumb that already knows where
+   * they are.
+   */
   function transportContent(state) {
     const control = (label, onclick, disabled = false) =>
       h('button', { class: 'button', type: 'button', disabled, onclick }, label);
@@ -286,21 +376,25 @@ export async function renderRehearse(id) {
     if (state.status === 'idle') return [control('Begin', begin)];
     if (state.status === 'done') return [control('Start again', () => engine.restart())];
 
+    const isMine = state.line?.characterId === script.userCharacterId;
     return [
       control('Back', () => engine.back(), state.index === 0),
       state.status === 'paused'
         ? control('Resume', () => engine.resume())
         : control('Pause', () => engine.pause(), state.status === 'error'),
-      masked(state) && control('Peek', peek),
-      control('Skip', () => engine.advance()),
-    ].filter(Boolean);
+      control('Peek', peek, !masked(state)),
+      control(
+        state.status === 'awaiting' && isMine ? 'Next line' : 'Skip',
+        () => engine.advance(),
+      ),
+    ];
   }
 
   // ---- lifetime -----------------------------------------------------------
 
   const setOnline = (value) => () => {
     online = value;
-    sync(engine.state);
+    if (engine) sync(engine.state);
   };
   const goneOnline = setOnline(true);
   const goneOffline = setOnline(false);
@@ -308,12 +402,13 @@ export async function renderRehearse(id) {
   // Leaving the screen must silence the voice, close the microphone and let the
   // screen sleep again — a hash change does none of them.
   const teardown = () => {
-    engine.stop();
-    speaker.cancel();
-    cueing.cancel();
+    engine?.stop();
+    speaker?.cancel();
+    cueing?.cancel();
     listener?.stop();
     wakeLock.destroy();
     clearTimeout(peekTimer);
+    document.body.classList.remove('rehearsing');
     window.removeEventListener('hashchange', teardown);
     window.removeEventListener('pagehide', teardown);
     window.removeEventListener('online', goneOnline);
@@ -323,8 +418,6 @@ export async function renderRehearse(id) {
   window.addEventListener('pagehide', teardown);
   window.addEventListener('online', goneOnline);
   window.addEventListener('offline', goneOffline);
-
-  sync(engine.state);
 
   return h(
     'main',
@@ -339,6 +432,7 @@ export async function renderRehearse(id) {
     h('div', { class: 'rehearsal-controls' }, voiceChip, hideChip),
     stage,
     transport,
+    live,
   );
 }
 

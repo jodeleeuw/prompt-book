@@ -267,11 +267,81 @@ test('an explicit theme is stamped on the root, and "system" stands aside', () =
 });
 
 test('settings survive a reload and keep their defaults', () => {
-  updateSettings({ hideLevel: 'initials' });
-  assert.equal(getSettings().hideLevel, 'initials');
+  updateSettings({ hideLevel: 'opening' });
+  assert.equal(getSettings().hideLevel, 'opening');
   assert.equal(getSettings().silenceMs, 2500, 'untouched settings keep their default');
 
   applyTheme('dark');
   assert.equal(document.documentElement.getAttribute('data-theme'), 'dark');
   updateSettings({ theme: 'system' });
+});
+
+// --- rehearsal screen affordances -------------------------------------------
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+test('the stage is a keyboard-operable control, not a bare div', async () => {
+  const id = await twoHander();
+  const { script, scenes } = await loadScript(id);
+  const mira = script.characters.find((c) => c.name === 'MIRA');
+  await saveRehearsalSetup(id, { userCharacterId: mira.id, sceneIds: [scenes[0].id] });
+
+  const view = await renderRehearse(id);
+  await tick();
+
+  const stage = view.querySelector('.stage');
+  assert.equal(stage.getAttribute('role'), 'button');
+  assert.equal(stage.getAttribute('tabindex'), '0');
+  assert.match(stage.getAttribute('aria-label'), /begin/i, 'the name says what a press does');
+
+  assert.ok(view.querySelector('[aria-live="polite"]'), 'turn changes need announcing');
+
+  await deleteScript(id);
+});
+
+test('the transport keeps its shape, so buttons do not move under a thumb', async () => {
+  const id = await twoHander();
+  const { script, scenes } = await loadScript(id);
+  const mira = script.characters.find((c) => c.name === 'MIRA');
+  await saveRehearsalSetup(id, { userCharacterId: mira.id, sceneIds: [scenes[0].id] });
+
+  const view = await renderRehearse(id);
+  await tick();
+
+  view.querySelector('.stage').click(); // begin
+  await tick();
+
+  const buttons = () => [...view.querySelectorAll('.transport .button')];
+  assert.deepEqual(
+    buttons().map((b) => b.textContent),
+    ['Back', 'Pause', 'Peek', 'Next line'],
+    'and Skip is named for what it does on your own line',
+  );
+  assert.equal(buttons()[2].disabled, false, 'the line is masked, so Peek is live');
+
+  // With nothing hidden there is nothing to peek at — but the slot must stay,
+  // or Skip slides under a thumb that already knows where it is.
+  view.querySelector('.hide-chip').click();
+  view.querySelector('.hide-chip').click();
+  assert.equal(getSettings().hideLevel, 'full');
+  assert.deepEqual(buttons().map((b) => b.textContent), ['Back', 'Pause', 'Peek', 'Next line']);
+  assert.equal(buttons()[2].disabled, true, 'Peek is disabled, not removed');
+
+  await deleteScript(id);
+});
+
+test('rehearsal claims the whole surface and gives it back on exit', async () => {
+  const id = await twoHander();
+  const { script, scenes } = await loadScript(id);
+  const mira = script.characters.find((c) => c.name === 'MIRA');
+  await saveRehearsalSetup(id, { userCharacterId: mira.id, sceneIds: [scenes[0].id] });
+
+  await renderRehearse(id);
+  await tick();
+  assert.ok(document.body.classList.contains('rehearsing'), 'the stage ground and banner rule depend on this');
+
+  window.dispatchEvent(new window.HashChangeEvent('hashchange'));
+  assert.equal(document.body.classList.contains('rehearsing'), false);
+
+  await deleteScript(id);
 });
