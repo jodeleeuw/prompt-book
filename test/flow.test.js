@@ -26,9 +26,11 @@ const {
   renameScene,
   moveScene,
   deleteScene,
+  saveRehearsalSetup,
 } = await import('../src/store/library.js');
 const { renderLibrary } = await import('../src/ui/library-view.js');
 const { renderScript } = await import('../src/ui/script-view.js');
+const { renderRehearse } = await import('../src/ui/rehearse-view.js');
 
 const SAMPLE = `INT. ELSINORE - NIGHT
 
@@ -196,6 +198,51 @@ test('scenes can be renamed', async () => {
     [...view.querySelectorAll('.scene-title-input')].map((input) => input.value),
     ['The battlements', 'Scene 2', 'Scene 3'],
   );
+
+  await deleteScript(id);
+});
+
+// --- rehearsal wiring ------------------------------------------------------
+
+const twoHander = () =>
+  createScript(
+    commitDraft({
+      title: 'Two hander',
+      ...parseText('MIRA: One.\n\nDEV: Two.\n\n---\n\nMIRA: Three.'),
+    }),
+  );
+
+test('rehearsal sends you to setup until a character and scenes are chosen', async () => {
+  const id = await twoHander();
+
+  const view = await renderRehearse(id);
+  assert.match(view.textContent, /Setting up/);
+  assert.match(window.location.hash, new RegExp(`#/script/${id}/setup$`));
+
+  await deleteScript(id);
+});
+
+test('setup is remembered, and a run covers only the chosen scenes', async () => {
+  const id = await twoHander();
+  const { script, scenes } = await loadScript(id);
+  const mira = script.characters.find((c) => c.name === 'MIRA');
+
+  await saveRehearsalSetup(id, {
+    userCharacterId: mira.id,
+    sceneIds: [scenes[0].id],
+    voiceByCharacterId: { [mira.id]: 'uri:Alice' },
+  });
+
+  const reloaded = (await loadScript(id)).script;
+  assert.equal(reloaded.userCharacterId, mira.id);
+  assert.deepEqual(reloaded.sceneIds, [scenes[0].id]);
+  assert.equal(reloaded.characters.find((c) => c.id === mira.id).voiceURI, 'uri:Alice');
+
+  // jsdom has no speechSynthesis, which is the same situation as a device with
+  // no voices: the run falls back to reading every line yourself.
+  const view = await renderRehearse(id);
+  assert.match(view.textContent, /Silent run/);
+  assert.match(view.querySelector('.counter').textContent, /^2 lines$/, 'scene two is excluded');
 
   await deleteScript(id);
 });

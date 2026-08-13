@@ -74,6 +74,26 @@ export async function deleteScript(id) {
   ]);
 }
 
+/**
+ * Remember who you are playing, which scenes are in the run, and which voice
+ * each character speaks in. Voices live on the character so they survive
+ * between sessions; a voice that no longer exists on the device is reassigned
+ * at setup rather than failing silently at rehearsal.
+ */
+export async function saveRehearsalSetup(scriptId, { userCharacterId, sceneIds, voiceByCharacterId }) {
+  const script = await db.get('scripts', scriptId);
+  if (!script) return;
+
+  const characters = script.characters.map((character) => ({
+    ...character,
+    voiceURI: voiceByCharacterId?.[character.id] ?? character.voiceURI ?? null,
+  }));
+
+  await db.transact([
+    { store: 'scripts', put: { ...script, characters, userCharacterId, sceneIds } },
+  ]);
+}
+
 export async function renameScene(sceneId, title) {
   const scene = await db.get('scenes', sceneId);
   if (!scene) return;

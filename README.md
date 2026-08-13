@@ -19,5 +19,8 @@ tablet over the LAN will not grant the mic without an HTTPS certificate.
 
 ## Status
 
-Milestones 1–2 — library, storage, plain-text and Fountain parsers, import
-preview, scene management. Rehearsal itself lands in milestone 3.
+Milestones 1–3 — library, storage, plain-text and Fountain parsers, import
+preview, scene management, and rehearsal with text-to-speech and tap-to-advance.
+
+Voice cueing (speech recognition) lands in milestone 4; until then you tap to
+end your line.

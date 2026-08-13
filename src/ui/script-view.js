@@ -121,6 +121,8 @@ export async function renderScript(id) {
     h(
       'div',
       { class: 'actions' },
+      scenes.length &&
+        h('a', { class: 'button primary', href: `#/script/${script.id}/setup` }, 'Rehearse'),
       h(
         'button',
         {
