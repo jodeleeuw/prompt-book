@@ -12,7 +12,11 @@ export const THEMES = [
 
 export const HIDE_LEVELS = [
   { id: 'full', label: 'Full text', hint: 'Read your lines as written.' },
-  { id: 'initials', label: 'First letters', hint: 'T b, o n t b — enough to jog the memory.' },
+  {
+    id: 'opening',
+    label: 'First two words',
+    hint: 'To be, ·· ··· ·· ·· — enough to start you off.',
+  },
   { id: 'hidden', label: 'Hidden', hint: 'Rhythm and punctuation only.' },
 ];
 
@@ -35,6 +39,11 @@ export function getSettings() {
     stored = {}; // private mode, or a value from an older shape
   }
   cache = { ...DEFAULTS, ...stored };
+  // A stored value from an earlier version of a list — 'initials', say — would
+  // otherwise silently fall through to showing the full line.
+  if (!HIDE_LEVELS.some((level) => level.id === cache.hideLevel)) {
+    cache.hideLevel = DEFAULTS.hideLevel;
+  }
   return cache;
 }
 

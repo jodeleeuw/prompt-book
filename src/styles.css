@@ -58,6 +58,23 @@ body {
   max-width: var(--measure);
   margin: 0 auto;
   padding: 2rem 1.25rem 6rem;
+  padding-bottom: max(6rem, env(safe-area-inset-bottom));
+}
+
+.offline-banner {
+  position: fixed;
+  inset: auto 0 0;
+  padding: 0.7rem 1.25rem;
+  padding-bottom: calc(0.7rem + env(safe-area-inset-bottom));
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.8rem;
+  text-align: center;
+  z-index: 10;
+}
+
+.offline-banner[hidden] {
+  display: none;
 }
 
 /* --- masthead ------------------------------------------------------------ */

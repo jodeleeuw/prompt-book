@@ -1,0 +1,23 @@
+{
+  "name": "Prompt Book",
+  "short_name": "Prompt Book",
+  "description": "Rehearse your lines. Import a script, and the app performs every other part while it waits for you.",
+  "start_url": "./",
+  "scope": "./",
+  "id": "prompt-book",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#faf8f4",
+  "theme_color": "#faf8f4",
+  "categories": ["productivity", "education"],
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    {
+      "src": "./icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

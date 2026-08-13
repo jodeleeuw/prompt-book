@@ -8,12 +8,16 @@ test('full text is left alone', () => {
   assert.equal(maskLine(LINE, 'full'), LINE);
 });
 
-test('initials keep the first letter of every word and all punctuation', () => {
-  assert.equal(maskLine(LINE, 'initials'), 'T b, o n t b — t i t q.');
+test('the opening gives back the first two words and hides the rest', () => {
+  assert.equal(maskLine(LINE, 'opening'), 'To be, ·· ··· ·· ·· — ···· ·· ··· ········.');
 });
 
-test('initials treat a contraction as one word', () => {
-  assert.equal(maskLine("Don't you dare", 'initials'), 'D y d');
+test('the opening treats a contraction as one word', () => {
+  assert.equal(maskLine("Don't you dare", 'opening'), "Don't you ····");
+});
+
+test('a line shorter than the opening is shown whole', () => {
+  assert.equal(maskLine('Not so.', 'opening'), 'Not so.');
 });
 
 test('hidden leaves no letters at all', () => {
@@ -25,7 +29,7 @@ test('hidden preserves word count and punctuation, so the rhythm survives', () =
   assert.equal(maskLine('To be, or not to be.', 'hidden'), '·· ··, ·· ··· ·· ··.');
 });
 
-test('hidden caps very long words rather than running off the screen', () => {
+test('long words are capped rather than running off the screen', () => {
   assert.equal(maskLine('antidisestablishmentarianism', 'hidden').length, 14);
 });
 
