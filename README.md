@@ -14,13 +14,30 @@ npm test         # headless: parsers, engine, cueing, storage, manifest
 npm run build
 npm run preview  # serves the build, with the service worker active
 npm run icons    # regenerates public/icons/ (the PNGs are committed)
+npm run ocr-assets  # copies the OCR engine into public/ocr/ (gitignored)
 ```
+
+`ocr-assets` runs automatically before `dev` and `build`. The engine's ~8.6MB
+of wasm and language data are served from this origin rather than a CDN, are
+gitignored, and are deliberately excluded from the service worker precache —
+they are fetched only the first time someone scans a page.
 
 The service worker is only emitted by `npm run build`, so offline behaviour has
 to be checked through `npm run preview` rather than the dev server.
 
 Microphone access requires HTTPS or localhost, so reaching the dev server from a
 tablet over the LAN will not grant the mic without an HTTPS certificate.
+
+## Importing a script
+
+Paste it, choose a `.txt` or `.fountain` file, or **photograph the pages**.
+Photo import runs entirely on the device: nothing is uploaded. It reconstructs
+character cues from where words sit on the page, because a cue is a cue by
+virtue of being indented or centred — flatten that and a name is
+indistinguishable from a short line of dialogue.
+
+Everything lands in the same import preview, where you correct it before it is
+saved.
 
 ## Status
 

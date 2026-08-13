@@ -5,6 +5,7 @@ import { commitDraft } from '../parse/draft.js';
 import { createScript } from '../store/library.js';
 import { promptForText, notify } from './confirm.js';
 import { SAMPLE_SCRIPT, SAMPLE_TITLE } from './sample-script.js';
+import { takePendingImport } from './pending-import.js';
 import { navigate } from './router.js';
 
 const DIRECTION = '__direction';
@@ -23,7 +24,7 @@ export async function renderImport() {
 
   // `raw` is kept so switching format re-reads the original source rather than
   // trying to reinterpret an already-parsed draft.
-  const build = (text, format, fallbackTitle) => {
+  const build = (text, format, fallbackTitle, scan = null) => {
     const parsed = parseScript(text, format);
     if (!parsed.scenes.length) {
       notify({
@@ -35,6 +36,7 @@ export async function renderImport() {
     draft = {
       raw: text,
       format,
+      scan,
       title: parsed.title || fallbackTitle,
       scenes: parsed.scenes,
       characters: parsed.characters,
@@ -103,6 +105,17 @@ export async function renderImport() {
       h(
         'section',
         { class: 'panel' },
+        h('h2', { class: 'panel-title' }, 'From photos'),
+        h(
+          'p',
+          { class: 'note' },
+          'Photograph the pages of a paper script. Reading happens on this device.',
+        ),
+        h('a', { class: 'button', href: '#/scan' }, 'Scan pages'),
+      ),
+      h(
+        'section',
+        { class: 'panel' },
         h('h2', { class: 'panel-title' }, 'Or try one'),
         h(
           'p',
@@ -144,6 +157,7 @@ export async function renderImport() {
       'div',
       null,
       titleField,
+      draft.scan && scanSummary(draft.scan),
       formatToggle(),
       h(
         'p',
@@ -175,6 +189,25 @@ export async function renderImport() {
         ),
       ),
     );
+  }
+
+  /**
+   * OCR guesses far more than the parser does, so the preview says where it was
+   * least sure rather than presenting every line with equal confidence.
+   */
+  function scanSummary(scan) {
+    const bits = [`Read from ${plural(scan.pageCount, 'photo')}.`];
+    if (scan.shaky?.length) {
+      const pages = scan.shaky.map((s) => s.page).join(', ');
+      bits.push(
+        `The recogniser was least sure of ${scan.shaky.length > 1 ? 'pages' : 'page'} ${pages} — worth reading those closely.`,
+      );
+    }
+    if (scan.dropped?.length) {
+      bits.push(`${plural(scan.dropped.length, 'line')} of page furniture removed.`);
+    }
+    bits.push('Tap any line to change who says it; you can fix the words after saving.');
+    return h('p', { class: 'note scan-summary' }, bits.join(' '));
   }
 
   // Format detection is a guess for pasted text, so it is shown and reversible
@@ -292,7 +325,10 @@ export async function renderImport() {
     navigate(`#/script/${id}`);
   }
 
-  update();
+  // A scan hands its text over in memory and lands straight in the preview.
+  const scanned = takePendingImport();
+  if (scanned) build(scanned.text, 'text', scanned.title, scanned);
+  else update();
 
   return h(
     'main',

@@ -5,6 +5,11 @@ import { defineConfig } from 'vite';
 
 const BASE = '/prompt-book/';
 
+// The OCR engine is loaded on demand and is larger than the rest of the app by
+// three orders of magnitude. Precaching it would turn a 60kB install into a
+// 6MB one for everybody, including people who never scan a page.
+const PRECACHE_EXCLUDE = /^ocr\//;
+
 /** Every file under public/, as URLs, so icons and the manifest work offline too. */
 function publicFiles(dir = 'public', root = 'public') {
   return readdirSync(dir).flatMap((entry) => {
@@ -30,7 +35,9 @@ function serviceWorker() {
       const assets = [
         BASE,
         ...Object.keys(bundle).map((file) => BASE + file),
-        ...publicFiles().map((file) => BASE + file),
+        ...publicFiles()
+          .filter((file) => !PRECACHE_EXCLUDE.test(file))
+          .map((file) => BASE + file),
       ].sort();
 
       // The cache name changes with its contents, which is what retires the

@@ -8,11 +8,18 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test \"test/**/*.test.js\"",
-    "icons": "node tools/make-icons.mjs"
+    "icons": "node tools/make-icons.mjs",
+    "ocr-assets": "node tools/copy-ocr-assets.mjs",
+    "predev": "node tools/copy-ocr-assets.mjs",
+    "prebuild": "node tools/copy-ocr-assets.mjs"
   },
   "devDependencies": {
+    "@tesseract.js-data/eng": "^1.0.0",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^30.0.1",
     "vite": "^8.2.1"
+  },
+  "dependencies": {
+    "tesseract.js": "^7.0.0"
   }
 }
