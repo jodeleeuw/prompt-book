@@ -1,4 +1,5 @@
 import { h, plural } from './dom.js';
+import { section, choice } from './controls.js';
 import { loadScript, saveRehearsalSetup } from '../store/library.js';
 import { loadVoices, createSpeaker, isSupported } from '../speech/tts.js';
 import { assignVoices, voicePool, findVoice } from '../speech/voices.js';
@@ -165,21 +166,6 @@ export async function renderSetup(id) {
   );
 }
 
-// ---- small shared pieces ---------------------------------------------------
-
-const section = (title, note, ...children) =>
-  h(
-    'section',
-    { class: 'panel' },
-    h('h2', { class: 'panel-title' }, title),
-    note && h('p', { class: 'note' }, note),
-    ...children,
-  );
-
-function choice(type, name, label, checked, onChange) {
-  const input = h('input', { type, name, checked, onchange: () => onChange(input.checked) });
-  return h('label', { class: 'choice' }, input, h('span', null, label));
-}
 
 const notFound = () =>
   h(

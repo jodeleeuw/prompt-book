@@ -4,10 +4,12 @@ import { renderImport } from './import-view.js';
 import { renderScript } from './script-view.js';
 import { renderSetup } from './setup-view.js';
 import { renderRehearse } from './rehearse-view.js';
+import { renderSettings } from './settings-view.js';
 
 const routes = [
   [/^#?\/?$/, renderLibrary],
   [/^#\/import$/, renderImport],
+  [/^#\/settings$/, renderSettings],
   [/^#\/script\/([^/]+)\/setup$/, (m) => renderSetup(m[1])],
   [/^#\/script\/([^/]+)\/rehearse$/, (m) => renderRehearse(m[1])],
   [/^#\/script\/([^/]+)$/, (m) => renderScript(m[1])],

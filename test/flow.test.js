@@ -246,3 +246,32 @@ test('setup is remembered, and a run covers only the chosen scenes', async () =>
 
   await deleteScript(id);
 });
+
+// --- settings ---------------------------------------------------------------
+
+const { getSettings, updateSettings, applyTheme } = await import('../src/store/settings.js');
+
+test('an explicit theme is stamped on the root, and "system" stands aside', () => {
+  updateSettings({ theme: 'dark' });
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'dark');
+
+  updateSettings({ theme: 'light' });
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'light');
+
+  updateSettings({ theme: 'system' });
+  assert.equal(
+    document.documentElement.hasAttribute('data-theme'),
+    false,
+    'system must leave prefers-color-scheme to decide',
+  );
+});
+
+test('settings survive a reload and keep their defaults', () => {
+  updateSettings({ hideLevel: 'initials' });
+  assert.equal(getSettings().hideLevel, 'initials');
+  assert.equal(getSettings().silenceMs, 2500, 'untouched settings keep their default');
+
+  applyTheme('dark');
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'dark');
+  updateSettings({ theme: 'system' });
+});

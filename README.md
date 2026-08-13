@@ -19,9 +19,12 @@ tablet over the LAN will not grant the mic without an HTTPS certificate.
 
 ## Status
 
-Milestones 1–4 — library, storage, plain-text and Fountain parsers, import
-preview, scene management, and rehearsal with text-to-speech and hands-free
-voice cueing.
+Milestones 1–5 — library, storage, plain-text and Fountain parsers, import
+preview, scene management, and rehearsal with text-to-speech, hands-free voice
+cueing, progressive line hiding, and a screen wake lock.
+
+Remaining: milestone 6 — manifest, icons, service worker and the GitHub Pages
+deploy.
 
 Voice cueing needs both HTTPS (or localhost) for the microphone and a network
 connection, because Chrome's recogniser is server-side. Where either is

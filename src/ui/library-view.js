@@ -14,7 +14,12 @@ export async function renderLibrary() {
       h('p', { class: 'subtitle' }, 'Rehearse your lines.'),
     ),
     scripts.length ? scriptList(scripts) : emptyState(),
-    h('div', { class: 'actions' }, h('a', { class: 'button', href: '#/import' }, 'Import a script')),
+    h(
+      'div',
+      { class: 'actions' },
+      h('a', { class: 'button primary', href: '#/import' }, 'Import a script'),
+      h('a', { class: 'button', href: '#/settings' }, 'Settings'),
+    ),
   );
 }
 
