@@ -204,3 +204,53 @@ test('images are capped on the long edge with the aspect kept', () => {
   assert.deepEqual(fitted(3000, 4000), { width: 1500, height: 2000 });
   assert.deepEqual(fitted(800, 600), { width: 800, height: 600 }, 'small images are left alone');
 });
+
+// --- engine assets ----------------------------------------------------------
+//
+// The first build of this shipped a hand-listed set of core files, guessed
+// wrong about which variant a current browser picks, and failed at the first
+// scan with a NetworkError on a file that was never copied. The worker is the
+// only thing that knows what it will ask for, so that is what gets checked.
+
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const at = (path) => resolve(projectRoot, path);
+
+const reachableCores = () => {
+  const worker = readFileSync(
+    at('node_modules/tesseract.js/dist/worker.min.js'),
+    'utf8',
+  );
+  return [...new Set([...worker.matchAll(/tesseract-core[\w-]*\.wasm\.js/g)].map((m) => m[0]))]
+    // src/ocr/engine.js pins oem: 1, so only the LSTM cores can be requested.
+    .filter((name) => name.endsWith('-lstm.wasm.js'));
+};
+
+test('the worker still names core variants in the shape the copy script expects', () => {
+  const cores = reachableCores();
+  assert.ok(cores.length >= 1, 'tesseract.js has renamed its cores — update tools/copy-ocr-assets.mjs');
+  for (const name of cores) {
+    assert.ok(
+      existsSync(at(`node_modules/tesseract.js-core/${name}`)),
+      `${name} is referenced by the worker but absent from tesseract.js-core`,
+    );
+  }
+});
+
+test('every core the browser could ask for has been copied for serving', (t) => {
+  if (!existsSync(at('public/ocr'))) {
+    t.skip('public/ocr not built yet — run npm run ocr-assets');
+    return;
+  }
+  for (const name of reachableCores()) {
+    assert.ok(
+      existsSync(at(`public/ocr/${name}`)),
+      `${name} would 404 at runtime: the browser picks a variant by CPU features, not by which one we happened to copy`,
+    );
+  }
+  assert.ok(existsSync(at('public/ocr/eng.traineddata.gz')));
+  assert.ok(existsSync(at('public/ocr/worker.min.js')));
+});
