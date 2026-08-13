@@ -6,6 +6,7 @@ import { createScript } from '../store/library.js';
 import { promptForText, notify } from './confirm.js';
 import { SAMPLE_SCRIPT, SAMPLE_TITLE } from './sample-script.js';
 import { takePendingImport } from './pending-import.js';
+import { fetchScript } from '../import/remote.js';
 import { navigate } from './router.js';
 
 const DIRECTION = '__direction';
@@ -84,6 +85,7 @@ export async function renderImport() {
         file,
         h('label', { class: 'button', for: 'file' }, 'Choose file'),
       ),
+      linkPanel(),
       h(
         'section',
         { class: 'panel' },
@@ -132,6 +134,65 @@ export async function renderImport() {
           `Load “${SAMPLE_TITLE}”`,
         ),
       ),
+    );
+  }
+
+  /**
+   * Load from a link.
+   *
+   * The failure messages carry the weight here. A browser cannot read a URL
+   * whose server does not permit it, and it will not say that is what
+   * happened — so remote.js names each failure and this just shows it, beside
+   * the field rather than in a dialog, so the link stays on screen to edit.
+   */
+  function linkPanel() {
+    const field = h('input', {
+      class: 'link-input',
+      type: 'text',
+      inputmode: 'url',
+      autocapitalize: 'off',
+      autocorrect: 'off',
+      spellcheck: false,
+      placeholder: 'https://…/scene.txt',
+      'aria-label': 'Link to a script file',
+    });
+
+    const problem = h('p', { class: 'note problem', role: 'status', hidden: true });
+    const button = h('button', { class: 'button', type: 'submit' }, 'Load');
+
+    const say = (message) => {
+      problem.textContent = message ?? '';
+      problem.hidden = !message;
+    };
+
+    const submit = async (event) => {
+      event.preventDefault();
+      say(null);
+      button.disabled = true;
+      button.replaceChildren('Loading…');
+      try {
+        const { text, filename } = await fetchScript(field.value);
+        load(text, filename);
+      } catch (error) {
+        say(error.message ?? String(error));
+        field.focus();
+      } finally {
+        button.disabled = false;
+        button.replaceChildren('Load');
+      }
+    };
+
+    return h(
+      'section',
+      { class: 'panel' },
+      h('h2', { class: 'panel-title' }, 'From a link'),
+      h(
+        'p',
+        { class: 'note' },
+        'A direct link to a .txt or .fountain file. A GitHub or gist page works too — it is turned into the raw file for you.',
+      ),
+      h('form', { class: 'link-row', onsubmit: submit }, field, button),
+      problem,
     );
   }
 

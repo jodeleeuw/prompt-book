@@ -1001,3 +1001,36 @@ body.rehearsing .offline-banner {
   color: var(--danger);
   margin-bottom: 0.75rem;
 }
+
+/* --- import from a link --------------------------------------------------- */
+
+.link-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.link-input {
+  font: inherit;
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.7rem;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+
+.link-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.problem {
+  color: var(--danger);
+  margin-top: 0.6rem;
+}
+
+.problem[hidden] {
+  display: none;
+}

@@ -31,11 +31,18 @@ tablet over the LAN will not grant the mic without an HTTPS certificate.
 
 ## Importing a script
 
-Paste it, choose a `.txt` or `.fountain` file, or **photograph the pages**.
+Paste it, choose a `.txt` or `.fountain` file, **load it from a link**, or
+**photograph the pages**.
 Photo import runs entirely on the device: nothing is uploaded. It reconstructs
 character cues from where words sit on the page, because a cue is a cue by
 virtue of being indented or centred — flatten that and a name is
 indistinguishable from a short line of dialogue.
+
+Loading from a link depends on the other server permitting it — a browser
+cannot read a URL whose server does not send CORS headers, and it will not say
+that is what happened. Raw file links (`raw.githubusercontent.com`, gists) work;
+most ordinary web pages do not. A GitHub or gist page URL is converted to the
+raw file automatically.
 
 Everything lands in the same import preview, where you correct it before it is
 saved.

@@ -431,3 +431,59 @@ test('a deleted scene can be put back, renumbering and counts included', async (
 
   await deleteScript(id);
 });
+
+// --- importing from a link --------------------------------------------------
+
+const { renderImport } = await import('../src/ui/import-view.js');
+
+const submitLink = async (view, value) => {
+  view.querySelector('.link-input').value = value;
+  view
+    .querySelector('.link-row')
+    .dispatchEvent(new window.Event('submit', { cancelable: true, bubbles: true }));
+  for (let i = 0; i < 8; i++) await tick();
+};
+
+test('a link that the browser is not allowed to read says so, beside the field', async () => {
+  // The failure this feature will hit most often. A browser reports a CORS
+  // refusal as an anonymous network error, so the risk is showing the user
+  // nothing, or something wrong like "not found".
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new TypeError('Failed to fetch');
+  };
+
+  const view = await renderImport();
+  await submitLink(view, 'https://example.com/scene.txt');
+
+  const problem = view.querySelector('.problem');
+  assert.equal(problem.hidden, false, 'the message must actually be shown');
+  assert.match(problem.textContent, /not allowed/);
+  assert.match(problem.textContent, /raw file link/, 'and it must say what to try instead');
+  assert.ok(view.querySelector('.link-input'), 'the link stays on screen to be corrected');
+
+  globalThis.fetch = original;
+});
+
+test('a link to a real script loads it into the preview', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    headers: { get: () => null },
+    text: async () => 'KEEPER: You are late.\n\nVISITOR: I walked.',
+  });
+
+  const view = await renderImport();
+  await submitLink(view, 'github.com/someone/scripts/blob/main/lighthouse.txt');
+
+  assert.match(view.textContent, /You are late/, 'the script reaches the preview');
+  assert.equal(
+    view.querySelector('.title-input').value,
+    'lighthouse',
+    'and the filename from the link becomes the title',
+  );
+
+  globalThis.fetch = original;
+});
