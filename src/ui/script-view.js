@@ -1,6 +1,13 @@
 import { h, plural } from './dom.js';
-import { loadScript, deleteScript, renameScript } from '../store/library.js';
-import { navigate } from './router.js';
+import {
+  loadScript,
+  deleteScript,
+  renameScript,
+  renameScene,
+  moveScene,
+  deleteScene,
+} from '../store/library.js';
+import { navigate, refresh } from './router.js';
 
 export async function renderScript(id) {
   const loaded = await loadScript(id);
@@ -25,6 +32,70 @@ export async function renderScript(id) {
     onchange: () => renameScript(script.id, titleField.value),
   });
 
+  const sceneSection = (scene, i) => {
+    const title = h('input', {
+      class: 'scene-title-input',
+      type: 'text',
+      value: scene.title,
+      'aria-label': 'Scene title',
+      onchange: () => renameScene(scene.id, title.value),
+    });
+
+    const move = (delta, label, glyph) =>
+      h(
+        'button',
+        {
+          class: 'icon',
+          type: 'button',
+          'aria-label': `Move ${scene.title} ${label}`,
+          disabled: delta < 0 ? i === 0 : i === scenes.length - 1,
+          onclick: async () => {
+            await moveScene(script.id, scene.id, delta);
+            refresh();
+          },
+        },
+        glyph,
+      );
+
+    return h(
+      'section',
+      { class: 'scene' },
+      h(
+        'div',
+        { class: 'scene-controls' },
+        title,
+        move(-1, 'up', '↑'),
+        move(1, 'down', '↓'),
+        h(
+          'button',
+          {
+            class: 'icon danger',
+            type: 'button',
+            'aria-label': `Delete ${scene.title}`,
+            onclick: async () => {
+              if (!confirm(`Delete “${scene.title}” and its ${plural(scene.lines.length, 'line')}?`)) return;
+              await deleteScene(script.id, scene.id);
+              refresh();
+            },
+          },
+          '×',
+        ),
+      ),
+      h(
+        'div',
+        { class: 'script-body' },
+        scene.lines.map((line) =>
+          h(
+            'p',
+            { class: 'line' },
+            h('span', { class: 'speaker' }, nameById.get(line.characterId) ?? 'Unknown'),
+            h('span', { class: 'speech' }, line.text),
+          ),
+        ),
+      ),
+    );
+  };
+
   return h(
     'main',
     { class: 'page' },
@@ -44,25 +115,9 @@ export async function renderScript(id) {
       { class: 'cast' },
       script.characters.map((c) => h('span', { class: 'chip' }, c.name)),
     ),
-    scenes.map((scene) =>
-      h(
-        'section',
-        { class: 'scene' },
-        h('h2', { class: 'scene-title' }, scene.title),
-        h(
-          'div',
-          { class: 'script-body' },
-          scene.lines.map((line) =>
-            h(
-              'p',
-              { class: 'line' },
-              h('span', { class: 'speaker' }, nameById.get(line.characterId) ?? 'Unknown'),
-              h('span', { class: 'speech' }, line.text),
-            ),
-          ),
-        ),
-      ),
-    ),
+    scenes.length
+      ? scenes.map(sceneSection)
+      : h('p', { class: 'note' }, 'Every scene has been deleted. Import the script again to start over.'),
     h(
       'div',
       { class: 'actions' },

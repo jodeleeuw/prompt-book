@@ -252,6 +252,57 @@ body {
   font-size: 1.05rem;
 }
 
+.scene-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+.scene-controls .scene-title-input {
+  flex: 1;
+  margin: 0;
+}
+
+.icon {
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.icon:hover:not(:disabled) {
+  border-color: var(--rule);
+  color: var(--ink);
+}
+
+.icon:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.icon.danger:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.format-select {
+  font: inherit;
+  font-size: 0.9rem;
+  background: transparent;
+  color: var(--ink);
+  border: 0;
+  border-bottom: 1px dotted var(--faint);
+  padding: 0 0.15rem;
+  cursor: pointer;
+}
+
 .line {
   margin: 0 0 1.1rem;
 }

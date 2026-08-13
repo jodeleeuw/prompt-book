@@ -45,32 +45,27 @@ export const getAll = async (name) => request((await objectStore(name, 'readonly
 export const getAllBy = async (name, index, key) =>
   request((await objectStore(name, 'readonly')).index(index).getAll(key));
 
-export const put = async (name, value) => request((await objectStore(name, 'readwrite')).put(value));
-
-/** Write many records across stores in one transaction, so an import is all-or-nothing. */
-export async function writeAll(entries) {
-  if (!entries.length) return;
+/**
+ * Apply many writes and deletes across stores in one transaction.
+ * Ops are `{ store, put: value }` or `{ store, delete: key }`.
+ *
+ * Everything that mutates more than one record goes through here: an import
+ * that half-succeeds, or a scene deletion that renumbers only some of its
+ * siblings, would leave the library in a state nothing else expects.
+ */
+export async function transact(ops) {
+  if (!ops.length) return;
   const db = await openDb();
-  const names = [...new Set(entries.map(([name]) => name))];
+  const names = [...new Set(ops.map((op) => op.store))];
   return new Promise((resolve, reject) => {
     const tx = db.transaction(names, 'readwrite');
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error);
-    for (const [name, value] of entries) tx.objectStore(name).put(value);
-  });
-}
-
-/** Delete many records across stores in one transaction. */
-export async function deleteAll(entries) {
-  if (!entries.length) return;
-  const db = await openDb();
-  const names = [...new Set(entries.map(([name]) => name))];
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(names, 'readwrite');
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
-    for (const [name, key] of entries) tx.objectStore(name).delete(key);
+    for (const op of ops) {
+      const store = tx.objectStore(op.store);
+      if ('delete' in op) store.delete(op.delete);
+      else store.put(op.put);
+    }
   });
 }

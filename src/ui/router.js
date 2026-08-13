@@ -13,6 +13,16 @@ export const navigate = (hash) => {
   window.location.hash = hash;
 };
 
+// Views mutate storage and then need the route rebuilt from it. Re-running the
+// route keeps the store as the single source of truth rather than patching the
+// DOM to match a write that may not have landed.
+let rerun = () => {};
+export const refresh = async () => {
+  const y = window.scrollY;
+  await rerun();
+  window.scrollTo(0, y);
+};
+
 function errorView(err) {
   console.error(err);
   return h(
@@ -40,6 +50,7 @@ export function startRouter() {
     window.scrollTo(0, 0);
   };
 
+  rerun = run;
   window.addEventListener('hashchange', run);
   run();
 }

@@ -1,5 +1,6 @@
 import { h, plural } from './dom.js';
-import { parseText, segmentParens } from '../parse/txt.js';
+import { segmentParens } from '../parse/lines.js';
+import { parseScript, detectFormat, FORMATS } from '../parse/index.js';
 import { commitDraft } from '../parse/draft.js';
 import { createScript } from '../store/library.js';
 import { navigate } from './router.js';
@@ -18,28 +19,43 @@ export async function renderImport() {
     window.scrollTo(0, y);
   };
 
-  const load = (text, title) => {
-    const parsed = parseText(text);
+  // `raw` is kept so switching format re-reads the original source rather than
+  // trying to reinterpret an already-parsed draft.
+  const build = (text, format, fallbackTitle) => {
+    const parsed = parseScript(text, format);
     if (!parsed.scenes.length) {
-      alert('Nothing recognisable in that file. Check that it contains dialogue.');
+      alert('Nothing recognisable in there. Check that it contains dialogue.');
       return;
     }
-    draft = { title, scenes: parsed.scenes, characters: parsed.characters };
+    draft = {
+      raw: text,
+      format,
+      title: parsed.title || fallbackTitle,
+      scenes: parsed.scenes,
+      characters: parsed.characters,
+    };
     update();
   };
+
+  const load = (text, filename) =>
+    build(
+      text,
+      detectFormat(text, filename),
+      filename.replace(/\.[^.]+$/, '').trim() || 'Untitled script',
+    );
 
   // ---- step one: pick a source -------------------------------------------
 
   function source() {
     const file = h('input', {
       type: 'file',
-      accept: '.txt,.text,.md,text/plain',
+      accept: '.txt,.text,.md,.fountain,text/plain',
       class: 'file-input',
       id: 'file',
       onchange: async () => {
         const chosen = file.files?.[0];
         if (!chosen) return;
-        load(await chosen.text(), chosen.name.replace(/\.[^.]+$/, ''));
+        load(await chosen.text(), chosen.name);
       },
     });
 
@@ -57,7 +73,7 @@ export async function renderImport() {
         'section',
         { class: 'panel' },
         h('h2', { class: 'panel-title' }, 'From a file'),
-        h('p', { class: 'note' }, 'Plain text. Fountain support arrives next.'),
+        h('p', { class: 'note' }, 'Plain text or Fountain (.txt, .fountain).'),
         file,
         h('label', { class: 'button', for: 'file' }, 'Choose file'),
       ),
@@ -73,7 +89,7 @@ export async function renderImport() {
             type: 'button',
             onclick: () => {
               if (!pasted.value.trim()) return;
-              load(pasted.value, 'Untitled script');
+              load(pasted.value, '');
             },
           },
           'Parse',
@@ -104,6 +120,7 @@ export async function renderImport() {
       'div',
       null,
       titleField,
+      formatToggle(),
       h(
         'p',
         { class: 'note' },
@@ -133,6 +150,23 @@ export async function renderImport() {
           'Start over',
         ),
       ),
+    );
+  }
+
+  // Format detection is a guess for pasted text, so it is shown and reversible
+  // rather than silently applied.
+  function formatToggle() {
+    const select = h('select', { class: 'format-select', 'aria-label': 'Script format' });
+    select.append(...FORMATS.map((f) => h('option', { value: f.id }, f.label)));
+    select.value = draft.format;
+    select.addEventListener('change', () => build(draft.raw, select.value, draft.title));
+
+    return h(
+      'p',
+      { class: 'note' },
+      'Read as ',
+      select,
+      ' — switching re-reads the source and discards corrections made here.',
     );
   }
 

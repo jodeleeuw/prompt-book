@@ -1,4 +1,4 @@
-import { applyParens } from './txt.js';
+import { applyParens } from './lines.js';
 
 /**
  * Turn a reviewed draft into the shape `createScript` persists.

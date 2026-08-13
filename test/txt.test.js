@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseText, applyParens, segmentParens } from '../src/parse/txt.js';
+import { parseText } from '../src/parse/txt.js';
+import { applyParens, segmentParens } from '../src/parse/lines.js';
 
 test('parses CHARACTER: dialogue form', () => {
   const { scenes, characters } = parseText('HAMLET: To be, or not to be.\n\nHORATIO: My lord?');

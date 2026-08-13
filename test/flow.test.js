@@ -17,9 +17,16 @@ globalThis.HTMLElement = dom.window.HTMLElement;
 // Dynamic, so the globals above exist before the view modules load.
 const { parseText } = await import('../src/parse/txt.js');
 const { commitDraft } = await import('../src/parse/draft.js');
-const { createScript, loadScript, listScripts, deleteScript, renameScript } = await import(
-  '../src/store/library.js'
-);
+const {
+  createScript,
+  loadScript,
+  listScripts,
+  deleteScript,
+  renameScript,
+  renameScene,
+  moveScene,
+  deleteScene,
+} = await import('../src/store/library.js');
 const { renderLibrary } = await import('../src/ui/library-view.js');
 const { renderScript } = await import('../src/ui/script-view.js');
 
@@ -119,4 +126,76 @@ test('renaming and deleting a script', async () => {
 
   const library = await renderLibrary();
   assert.match(library.textContent, /No scripts yet/);
+});
+
+// --- scene management ------------------------------------------------------
+
+const threeScenes = () =>
+  createScript(
+    commitDraft({
+      title: 'Three',
+      ...parseText('HAMLET: One.\n\n---\n\nHAMLET: Two.\n\n---\n\nHAMLET: Three.'),
+    }),
+  );
+
+const textsOf = (scenes) => scenes.map((s) => s.lines[0].text);
+
+test('scenes can be reordered, and orders stay contiguous', async () => {
+  const id = await threeScenes();
+  const first = (await loadScript(id)).scenes[0].id;
+
+  await moveScene(id, first, 1);
+  const { scenes } = await loadScript(id);
+  assert.deepEqual(textsOf(scenes), ['Two.', 'One.', 'Three.']);
+  assert.deepEqual(
+    scenes.map((s) => s.order),
+    [0, 1, 2],
+  );
+
+  await deleteScript(id);
+});
+
+test('a move past either end is a no-op', async () => {
+  const id = await threeScenes();
+  const { scenes } = await loadScript(id);
+
+  await moveScene(id, scenes[0].id, -1);
+  await moveScene(id, scenes[2].id, 1);
+  assert.deepEqual(textsOf((await loadScript(id)).scenes), ['One.', 'Two.', 'Three.']);
+
+  await deleteScript(id);
+});
+
+test('deleting a scene renumbers the rest and updates the script counts', async () => {
+  const id = await threeScenes();
+  const { scenes } = await loadScript(id);
+
+  await deleteScene(id, scenes[1].id);
+  const after = await loadScript(id);
+
+  assert.deepEqual(textsOf(after.scenes), ['One.', 'Three.']);
+  assert.deepEqual(
+    after.scenes.map((s) => s.order),
+    [0, 1],
+  );
+  assert.equal(after.script.sceneCount, 2);
+  assert.equal(after.script.lineCount, 2, 'the library listing must not keep counting deleted lines');
+
+  await deleteScript(id);
+});
+
+test('scenes can be renamed', async () => {
+  const id = await threeScenes();
+  const { scenes } = await loadScript(id);
+
+  await renameScene(scenes[0].id, 'The battlements');
+  assert.equal((await loadScript(id)).scenes[0].title, 'The battlements');
+
+  const view = await renderScript(id);
+  assert.deepEqual(
+    [...view.querySelectorAll('.scene-title-input')].map((input) => input.value),
+    ['The battlements', 'Scene 2', 'Scene 3'],
+  );
+
+  await deleteScript(id);
 });
