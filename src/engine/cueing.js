@@ -14,17 +14,24 @@ import { createCueMatcher } from './match.js';
 export function createCueing({ listener, onAdvance, silenceMs = 2500, tailSize = 3 }) {
   let matcher = null;
   let timer = null;
+  let listening = false;
 
   const disarm = () => {
     clearTimeout(timer);
     timer = null;
   };
 
+  /**
+   * Deliberately does not close the microphone. The run may be about to wait
+   * on another line from the same character — a speech split by stage
+   * directions is several consecutive lines — and closing it only to reopen it
+   * a moment later is what made the recording indicator flicker. cancel() is
+   * what closes it, and the run calls that the moment your turn is over.
+   */
   const finish = () => {
     if (!matcher) return;
     matcher = null;
     disarm();
-    listener?.stop();
     onAdvance();
   };
 
@@ -33,7 +40,12 @@ export function createCueing({ listener, onAdvance, silenceMs = 2500, tailSize =
     expect(text) {
       matcher = createCueMatcher(text, { tailSize });
       disarm();
-      listener?.start();
+      if (!listening) {
+        listener?.start();
+        listening = true;
+      }
+      // Anything already heard belongs to the previous line, not this one.
+      listener?.mark?.();
     },
 
     /** A transcript arrived. Ignored unless a line is actually expected. */
@@ -45,19 +57,28 @@ export function createCueing({ listener, onAdvance, silenceMs = 2500, tailSize =
     },
 
     /**
-     * Stop listening. Called whenever the run leaves your line — including
-     * immediately before the app speaks, so the microphone is never open while
-     * a voice is coming out of the speaker.
+     * Close the microphone. Called whenever the run leaves your line —
+     * including immediately before the app speaks, so the microphone is never
+     * open while a voice is coming out of the speaker.
+     *
+     * Tracked with its own flag rather than inferred from the matcher: after
+     * the tail lands there is no matcher left, and inferring from it would
+     * leave the microphone open through the reply.
      */
     cancel() {
-      if (!matcher && !timer) return;
       matcher = null;
       disarm();
+      if (!listening) return;
+      listening = false;
       listener?.stop();
     },
 
     get expecting() {
       return Boolean(matcher);
+    },
+
+    get listening() {
+      return listening;
     },
   };
 }

@@ -60,10 +60,11 @@ test('a line with no words never matches, leaving it to the silence timer', () =
 // --- cueing -----------------------------------------------------------------
 
 function harness({ silenceMs = 20 } = {}) {
-  const calls = { start: 0, stop: 0, advanced: 0 };
+  const calls = { start: 0, stop: 0, mark: 0, advanced: 0 };
   const listener = {
     start: () => calls.start++,
     stop: () => calls.stop++,
+    mark: () => calls.mark++,
   };
   const cueing = createCueing({
     listener,
@@ -75,15 +76,45 @@ function harness({ silenceMs = 20 } = {}) {
 
 const after = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-test('hearing the tail advances at once and closes the microphone', () => {
+test('hearing the tail advances at once and stops matching', () => {
   const { cueing, calls } = harness();
   cueing.expect('Everything here sticks.');
   assert.equal(calls.start, 1);
 
   cueing.heard('everything here sticks');
   assert.equal(calls.advanced, 1);
-  assert.equal(calls.stop, 1, 'the microphone does not stay open into the next line');
   assert.equal(cueing.expecting, false);
+});
+
+test('the microphone is closed before the app speaks, even after a cue landed', () => {
+  const { cueing, calls } = harness();
+  cueing.expect('Everything here sticks.');
+  cueing.heard('everything here sticks'); // finish() clears the matcher
+
+  // cancel() is what the run calls when it moves off your line. It must close
+  // the microphone even though there is no matcher left to infer it from.
+  cueing.cancel();
+  assert.equal(calls.stop, 1, 'the microphone must not stay open into the reply');
+  assert.equal(cueing.listening, false);
+
+  cueing.cancel();
+  assert.equal(calls.stop, 1, 'and closing twice does not close it twice');
+});
+
+test('consecutive lines for one character reuse the open microphone', () => {
+  const { cueing, calls } = harness();
+
+  // BULLFROG's speech, split into separate lines by the stage directions
+  // between them.
+  for (const line of ['Hang on...', 'I have a human in my throat.', 'Oh well.']) {
+    cueing.expect(line);
+    cueing.heard(line.toLowerCase());
+  }
+
+  assert.equal(calls.advanced, 3);
+  assert.equal(calls.start, 1, 'the microphone opens once, not once per line');
+  assert.equal(calls.stop, 0, 'and is not torn down between them');
+  assert.equal(calls.mark, 3, 'but each line starts from a clean transcript');
 });
 
 test('going quiet advances even when the tail was never heard', async () => {
