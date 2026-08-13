@@ -1,0 +1,83 @@
+name: Deploy to GitHub Pages
+
+# Pages is configured to build from GitHub Actions, so this workflow is the
+# only thing that publishes. `main` is the repo's default branch; work on
+# another branch has to be merged before it goes out.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write # required by actions/deploy-pages
+
+# Never let two deploys race. Queue rather than cancel: a half-published
+# deploy is worse than a slow one.
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` rather than `install`: the lockfile decides, and a drifting
+      # transitive dependency should fail here rather than in someone's
+      # rehearsal.
+      - run: npm ci
+
+      - name: Test
+        run: npm test
+
+      # `prebuild` copies the OCR engine out of node_modules into public/ before
+      # vite runs; npm triggers it automatically.
+      - name: Build
+        run: npm run build
+
+      # The service worker precaches only the app shell. Guard it here, because
+      # the failure is silent: everything still works, it is just that every
+      # visitor downloads the lazily-loaded engines on install.
+      - name: Check the install stays small
+        run: |
+          node -e "
+            const fs = require('fs');
+            const sw = fs.readFileSync('dist/sw.js', 'utf8');
+            const list = JSON.parse(sw.match(/const PRECACHE = (\[[\s\S]*?\]);/)[1]);
+            const bytes = list.reduce((total, url) => {
+              const path = url === '/prompt-book/'
+                ? 'dist/index.html'
+                : 'dist/' + url.replace('/prompt-book/', '');
+              try { return total + fs.statSync(path).size; } catch { return total; }
+            }, 0);
+            const kb = Math.round(bytes / 1024);
+            console.log(\`precache: \${list.length} entries, \${kb}KB\`);
+            if (kb > 500) {
+              console.error('The install has grown past 500KB — something lazily loaded is being precached.');
+              process.exit(1);
+            }
+          "
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

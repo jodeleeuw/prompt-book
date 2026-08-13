@@ -21,11 +21,41 @@ function publicFiles(dir = 'public', root = 'public') {
 }
 
 /**
+ * The app shell: the entry chunk and everything it imports *statically*, plus
+ * stylesheets.
+ *
+ * Anything reachable only through a dynamic import is deliberately left out.
+ * Precaching every emitted file put the lazily-loaded speech engine and its
+ * 20MB of WebAssembly into the install — 22.8MB downloaded by everyone,
+ * including the majority who never turn that feature on. The fetch handler
+ * still caches those on first use, so the feature works offline once used.
+ */
+function shellFiles(bundle) {
+  const shell = new Set();
+
+  const walk = (name) => {
+    const chunk = bundle[name];
+    if (!chunk || shell.has(name)) return;
+    shell.add(name);
+    for (const dependency of chunk.imports ?? []) walk(dependency); // static only
+    for (const css of chunk.viteMetadata?.importedCss ?? []) shell.add(css);
+  };
+
+  for (const [name, output] of Object.entries(bundle)) {
+    if (output.type === 'chunk' && output.isEntry) walk(name);
+    if (output.type === 'asset' && name.endsWith('.css')) shell.add(name);
+  }
+
+  // Belt and braces: a WebAssembly binary is never part of a shell.
+  return [...shell].filter((name) => !name.endsWith('.wasm'));
+}
+
+/**
  * Emits a service worker that precaches the build.
  *
- * Hand-rolled rather than pulled from a toolkit: the app is three files and a
- * handful of icons, and an inspectable 60-line worker is worth more here than
- * a dependency whose behaviour has to be configured back down to this.
+ * Hand-rolled rather than pulled from a toolkit: the shell is a handful of
+ * files, and an inspectable worker is worth more here than a dependency whose
+ * behaviour has to be configured back down to this.
  */
 function serviceWorker() {
   return {
@@ -34,7 +64,7 @@ function serviceWorker() {
     generateBundle(_options, bundle) {
       const assets = [
         BASE,
-        ...Object.keys(bundle).map((file) => BASE + file),
+        ...shellFiles(bundle).map((file) => BASE + file),
         ...publicFiles()
           .filter((file) => !PRECACHE_EXCLUDE.test(file))
           .map((file) => BASE + file),

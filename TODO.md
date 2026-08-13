@@ -35,9 +35,13 @@ for the original milestones and `.impeccable/critique/` for the design review.
 
 ## Deploy
 
-- [ ] **GitHub Pages deploy** (the milestone 6 leftover). Not just packaging:
-      the microphone needs a secure context, so the LAN dev server cannot grant
-      it and **voice cueing has never been tested on the tablet**.
+- [x] **GitHub Pages deploy** — `.github/workflows/deploy.yml`, triggered by
+      pushes to `main`.
+- [ ] **Merge `dev` into `main`** so the first deploy actually has the app in
+      it. Everything since the initial commit lives on `dev`.
+- [ ] **Test voice cueing on the tablet** once it is live. The microphone needs
+      a secure context, so this has never been possible from the LAN dev
+      server — it is the first thing the deploy unblocks.
 
 ## Voices
 
