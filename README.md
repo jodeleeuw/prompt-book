@@ -3,7 +3,8 @@
 PWA for line prompts. Import a script, mark which character is yours, and the app
 performs every other part aloud while listening for your cues.
 
-See [PLAN.md](PLAN.md) for scope, platform constraints, and milestones.
+See [PLAN.md](PLAN.md) for scope, platform constraints, and milestones, and
+[TODO.md](TODO.md) for the working backlog.
 
 ## Development
 
