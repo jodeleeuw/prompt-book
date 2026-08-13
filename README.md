@@ -19,8 +19,11 @@ tablet over the LAN will not grant the mic without an HTTPS certificate.
 
 ## Status
 
-Milestones 1–3 — library, storage, plain-text and Fountain parsers, import
-preview, scene management, and rehearsal with text-to-speech and tap-to-advance.
+Milestones 1–4 — library, storage, plain-text and Fountain parsers, import
+preview, scene management, and rehearsal with text-to-speech and hands-free
+voice cueing.
 
-Voice cueing (speech recognition) lands in milestone 4; until then you tap to
-end your line.
+Voice cueing needs both HTTPS (or localhost) for the microphone and a network
+connection, because Chrome's recogniser is server-side. Where either is
+missing the run falls back to tap-to-advance and says so. Testing it on a
+tablet therefore needs the milestone 6 deploy, not the LAN dev server.

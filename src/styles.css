@@ -378,6 +378,61 @@ body {
   white-space: nowrap;
 }
 
+.voice-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  font: inherit;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-align: left;
+  min-height: 44px;
+  padding: 0.4rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.voice-chip:disabled {
+  cursor: default;
+}
+
+.voice-chip .dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
+}
+
+.voice-chip.live {
+  color: var(--accent);
+}
+
+.voice-chip.live .dot {
+  opacity: 1;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.voice-chip.warn {
+  color: var(--danger);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-chip.live .dot {
+    animation: none;
+  }
+}
+
 .stage {
   flex: 1;
   display: flex;

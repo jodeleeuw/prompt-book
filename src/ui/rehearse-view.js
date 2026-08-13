@@ -1,8 +1,10 @@
 import { h } from './dom.js';
 import { loadScript } from '../store/library.js';
-import { loadVoices, createSpeaker, isSupported } from '../speech/tts.js';
+import { loadVoices, createSpeaker, isSupported as canSpeak } from '../speech/tts.js';
+import { createListener, isSupported as canListen } from '../speech/stt.js';
 import { assignVoices, findVoice } from '../speech/voices.js';
 import { createRehearsal, runningOrder } from '../engine/rehearsal.js';
+import { createCueing } from '../engine/cueing.js';
 import { navigate } from './router.js';
 
 export async function renderRehearse(id) {
@@ -27,15 +29,43 @@ export async function renderRehearse(id) {
 
   // With no voices there is nothing to perform the other parts, so every line
   // becomes one you read and tap past, rather than failing on the first cue.
-  const silent = !isSupported() || !voices.length;
+  const silent = !canSpeak() || !voices.length;
   const isUserLine = silent ? () => true : (line) => line.characterId === script.userCharacterId;
 
   const speaker = createSpeaker({
     voiceFor: (line) => findVoice(voices, assignment[line.characterId]),
   });
 
+  // ---- voice cueing -------------------------------------------------------
+
+  let voiceWanted = canListen() && !silent;
+  let micStatus = 'idle';
+  let micDetail = null;
+  let online = navigator.onLine !== false;
+
+  const listener = canListen()
+    ? createListener({
+        lang: !lang || lang === 'en' ? 'en-US' : lang,
+        onResult: (transcript) => cueing.heard(transcript),
+        onStatus: (status, detail) => {
+          micStatus = status;
+          micDetail = detail ?? null;
+          if (status === 'denied') cueing.cancel();
+          paintVoice();
+        },
+      })
+    : null;
+
+  const cueing = createCueing({ listener, onAdvance: () => engine.advance() });
+
+  const cueingAvailable = () =>
+    voiceWanted && online && micStatus !== 'denied' && micStatus !== 'error';
+
+  // ---- chrome -------------------------------------------------------------
+
   const counter = h('span', { class: 'counter' });
   const sceneLabel = h('span', { class: 'scene-label' });
+  const voiceChip = h('button', { class: 'voice-chip', type: 'button', onclick: toggleVoice });
   const stage = h('div', { class: 'stage', onclick: onStageClick });
   const transport = h('div', { class: 'transport' });
 
@@ -47,6 +77,13 @@ export async function renderRehearse(id) {
     onChange: paint,
   });
 
+  function toggleVoice() {
+    if (!canListen() || silent) return;
+    if (micStatus === 'denied' || micStatus === 'error') micStatus = 'idle'; // let them retry
+    else voiceWanted = !voiceWanted;
+    paint(engine.state);
+  }
+
   function onStageClick() {
     const { status } = engine.state;
     if (status === 'idle') engine.begin();
@@ -56,12 +93,43 @@ export async function renderRehearse(id) {
   }
 
   function paint(state) {
+    // The microphone is opened only while waiting on your line, so it is never
+    // live while a voice is coming out of the speaker.
+    if (state.status === 'awaiting' && cueingAvailable()) cueing.expect(state.line.text);
+    else cueing.cancel();
+
     const position = Math.min(state.index + 1, state.total);
-    counter.textContent = state.status === 'idle' ? `${state.total} lines` : `${position} / ${state.total}`;
+    counter.textContent =
+      state.status === 'idle' ? `${state.total} lines` : `${position} / ${state.total}`;
     sceneLabel.textContent = state.line?.sceneTitle ?? '';
     stage.replaceChildren(stageContent(state));
-    transport.replaceChildren(...transportContent(state));
     stage.classList.toggle('tappable', TAPPABLE.has(state.status));
+    transport.replaceChildren(...transportContent(state));
+    paintVoice();
+  }
+
+  function paintVoice() {
+    const { label, tone, actionable } = voiceState();
+    voiceChip.replaceChildren(h('span', { class: 'dot' }), label);
+    voiceChip.className = `voice-chip ${tone}`;
+    voiceChip.disabled = !actionable;
+  }
+
+  function voiceState() {
+    if (silent) return { label: 'Silent run', tone: 'muted', actionable: false };
+    if (!canListen()) {
+      return { label: 'This browser cannot listen', tone: 'muted', actionable: false };
+    }
+    if (!online) return { label: 'Voice cueing needs a connection', tone: 'warn', actionable: false };
+    if (micStatus === 'denied') {
+      return { label: 'Microphone blocked — tap to retry', tone: 'warn', actionable: true };
+    }
+    if (micStatus === 'error') {
+      return { label: `Microphone trouble: ${micDetail} — tap to retry`, tone: 'warn', actionable: true };
+    }
+    if (!voiceWanted) return { label: 'Voice cueing off', tone: 'muted', actionable: true };
+    if (micStatus === 'listening') return { label: 'Listening', tone: 'live', actionable: true };
+    return { label: 'Voice cueing on', tone: 'muted', actionable: true };
   }
 
   const TAPPABLE = new Set(['idle', 'awaiting', 'done', 'error']);
@@ -80,10 +148,17 @@ export async function renderRehearse(id) {
       );
     }
     if (state.status === 'done') {
-      return group(h('p', { class: 'cue' }, 'End of the run.'), h('p', { class: 'hint' }, 'Tap to go again.'));
+      return group(
+        h('p', { class: 'cue' }, 'End of the run.'),
+        h('p', { class: 'hint' }, 'Tap to go again.'),
+      );
     }
     if (state.status === 'error') {
-      return group(h('p', { class: 'cue' }, 'Speech stopped.'), h('p', { class: 'hint' }, state.error), h('p', { class: 'hint' }, 'Tap to carry on.'));
+      return group(
+        h('p', { class: 'cue' }, 'Speech stopped.'),
+        h('p', { class: 'hint' }, state.error),
+        h('p', { class: 'hint' }, 'Tap to carry on.'),
+      );
     }
 
     const mine = state.line.characterId === script.userCharacterId;
@@ -108,7 +183,10 @@ export async function renderRehearse(id) {
   const hintFor = (state, mine) => {
     if (state.status === 'paused') return 'Paused.';
     if (state.status === 'speaking') return 'Listening to your scene partner…';
-    return mine ? 'Tap anywhere when you have finished the line.' : 'Tap to carry on.';
+    if (!mine) return 'Tap to carry on.';
+    return cueingAvailable()
+      ? 'Say your line — it moves on when you finish, or tap.'
+      : 'Tap anywhere when you have finished the line.';
   };
 
   function transportContent(state) {
@@ -127,16 +205,31 @@ export async function renderRehearse(id) {
     ];
   }
 
-  // Leaving the screen must silence the voice — a hash change alone does not
-  // stop an utterance already handed to the synthesiser.
+  // ---- lifetime -----------------------------------------------------------
+
+  const setOnline = (value) => () => {
+    online = value;
+    paint(engine.state);
+  };
+  const goneOnline = setOnline(true);
+  const goneOffline = setOnline(false);
+
+  // Leaving the screen must silence the voice and close the microphone —
+  // a hash change alone stops neither.
   const teardown = () => {
     engine.stop();
     speaker.cancel();
+    cueing.cancel();
+    listener?.stop();
     window.removeEventListener('hashchange', teardown);
     window.removeEventListener('pagehide', teardown);
+    window.removeEventListener('online', goneOnline);
+    window.removeEventListener('offline', goneOffline);
   };
   window.addEventListener('hashchange', teardown);
   window.addEventListener('pagehide', teardown);
+  window.addEventListener('online', goneOnline);
+  window.addEventListener('offline', goneOffline);
 
   paint(engine.state);
 
@@ -150,6 +243,7 @@ export async function renderRehearse(id) {
       sceneLabel,
       counter,
     ),
+    voiceChip,
     stage,
     transport,
   );
