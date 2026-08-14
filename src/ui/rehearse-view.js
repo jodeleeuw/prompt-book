@@ -86,6 +86,10 @@ export async function renderRehearse(id) {
   const transport = h('div', { class: 'transport' });
   const live = h('p', { class: 'sr-only', role: 'status', 'aria-live': 'polite' });
 
+  const loadingCue = h('p', { class: 'cue' });
+  const loadingHint = h('p', { class: 'hint' });
+  const loadingPanel = group(loadingCue, loadingHint);
+
   // Not a <button>: the stage holds paragraphs, which button may not contain.
   const stage = h('div', {
     class: 'stage',
@@ -174,13 +178,13 @@ export async function renderRehearse(id) {
     }
 
     const kokoro = assignKokoroVoices(script.characters);
-    const onProgress = ({ stage, progress }) => {
-      loadNote = `${stage} ${Math.round((progress ?? 0) * 100)}%`;
+    const onProgress = ({ loaded }) => {
+      loadNote = `${Math.round((loaded ?? 0) / 1e6)} MB`;
       paintLoading();
     };
 
     try {
-      loadNote = 'starting';
+      loadNote = '0 MB';
       paintLoading();
       await loadKokoro({ onProgress });
       highQuality = true;
@@ -255,27 +259,29 @@ export async function renderRehearse(id) {
   function paintLoading() {
     counter.textContent = `${lines.length} lines`;
     sceneLabel.textContent = chosen[0]?.title ?? '';
-    stage.replaceChildren(
-      group(
-        h('p', { class: 'cue' }, loadNote ? 'Fetching the voice model…' : 'Finding voices…'),
-        h(
-          'p',
-          { class: 'hint' },
-          loadNote
-            ? `${loadNote} — about 100MB, downloaded once and kept for next time.`
-            : 'Reading the voices installed on this device.',
-        ),
-      ),
-    );
-    stage.classList.remove('tappable');
-    stage.setAttribute('aria-label', 'Preparing rehearsal');
-    transport.replaceChildren(
-      h('button', { class: 'button', type: 'button', disabled: true }, 'Begin'),
-    );
-    voiceChip.replaceChildren(h('span', { class: 'dot' }), 'Preparing');
-    voiceChip.className = 'voice-chip muted';
-    voiceChip.disabled = true;
-    renderHide();
+
+    loadingCue.textContent = loadNote ? 'Fetching the voice model…' : 'Finding voices…';
+    loadingHint.textContent = loadNote
+      ? `${loadNote} of about 100MB, downloaded once and kept for next time.`
+      : 'Reading the voices installed on this device.';
+
+    // Mounted once and then written into. Replacing the subtree restarts the
+    // stage's entry animation, which is right for a line landing and wrong for
+    // a number ticking: a hundred restarts during the download read as flicker.
+    if (loadingPanel.parentNode !== stage) {
+      stage.replaceChildren(loadingPanel);
+      stage.classList.remove('tappable');
+      stage.setAttribute('aria-label', 'Preparing rehearsal');
+      transport.replaceChildren(
+        h('button', { class: 'button', type: 'button', disabled: true }, 'Begin'),
+      );
+      // None of the chrome below says anything about progress, so it belongs
+      // with the first paint rather than with every one.
+      voiceChip.replaceChildren(h('span', { class: 'dot' }), 'Preparing');
+      voiceChip.className = 'voice-chip muted';
+      voiceChip.disabled = true;
+      renderHide();
+    }
   }
 
   /** State changed: reconcile the microphone, then draw. */

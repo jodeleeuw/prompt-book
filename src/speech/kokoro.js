@@ -17,6 +17,51 @@ const SAMPLE_LIMIT = 40; // generated lines kept in memory
 
 let engine = null;
 
+/**
+ * One number out of many concurrent downloads.
+ *
+ * Progress arrives per file with several in flight, so forwarding the reports
+ * straight through makes a percentage jump between a 500-byte config at 90% and
+ * the 88MB model at 3%. Summing does not rescue a percentage either: the
+ * denominator only exists for files that have already announced themselves, so
+ * the config finishing first reads as 100% and then sits there for the rest of
+ * the download.
+ *
+ * Bytes downloaded have no denominator to be wrong about. They only ever go up,
+ * and the screen already says roughly how many to expect.
+ */
+export function aggregateProgress(onProgress) {
+  if (!onProgress) return undefined;
+
+  const files = new Map();
+  let high = 0;
+
+  return (report) => {
+    const file = report?.file;
+    if (!file) return;
+
+    if (report.status === 'done' || report.status === 'ready') {
+      const seen = files.get(file);
+      if (!seen) return;
+      seen.loaded = seen.total; // the last chunk often goes unreported
+    } else if (typeof report.loaded === 'number' && report.total > 0) {
+      files.set(file, { loaded: report.loaded, total: report.total });
+    } else {
+      return;
+    }
+
+    let loaded = 0;
+    let total = 0;
+    for (const entry of files.values()) {
+      loaded += entry.loaded;
+      total += entry.total;
+    }
+
+    high = Math.max(high, loaded); // a retried file restarting must not rewind it
+    onProgress({ loaded: high, total });
+  };
+}
+
 /** WebGPU is several times faster; fp32 is the recommended dtype there. */
 async function bestBackend() {
   try {
@@ -47,11 +92,7 @@ export function loadKokoro({ onProgress } = {}) {
     const tts = await KokoroTTS.from_pretrained(MODEL, {
       device,
       dtype,
-      progress_callback: (report) => {
-        if (typeof report?.progress === 'number') {
-          onProgress?.({ stage: report.status ?? 'loading', progress: report.progress / 100 });
-        }
-      },
+      progress_callback: aggregateProgress(onProgress),
     });
     return { tts, device };
   })();
