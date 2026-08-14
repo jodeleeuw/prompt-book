@@ -28,8 +28,12 @@ export const VOICE_QUALITY = [
   },
   {
     id: 'high',
-    label: 'High quality (downloads ~100MB once)',
-    hint: 'A neural voice model, run on this device. Better and more natural, but the first run downloads about 100MB and needs a connection to do it.',
+    label: 'High quality (a large one-off download)',
+    // The two figures are the two sets of weights: a device with WebGPU gets
+    // the full-precision model, which is 3.5x the size of the quantised one
+    // everything else runs. Quoting only the smaller number, as this did, sets
+    // someone off on a 330MB download expecting 90.
+    hint: 'A neural voice model, run on this device. Better and more natural, but the first run downloads it — about 90MB, or about 330MB where the graphics chip can run the full-precision version — and needs a connection to do it.',
   },
 ];
 

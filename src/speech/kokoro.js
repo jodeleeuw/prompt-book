@@ -4,11 +4,12 @@
 // finishes, cancel() silences it — so the rehearsal engine needs no knowledge
 // that this exists.
 //
-// Two facts shape it. The model is about 88MB and the runtime another 11–21MB,
-// so it is loaded only when chosen and only once. And generation runs at
-// roughly 2.5x realtime on a CPU, which is fast enough to stay ahead of a scene
-// but far too slow to start when the line is already due — hence prefetch(),
-// which the run calls for the next line while the current one is still playing.
+// Two facts shape it. The weights are large — 92MB quantised, 326MB at full
+// precision, which is what a device with WebGPU fetches — so they are loaded
+// only when chosen and only once. And generation runs at roughly 2.5x realtime
+// on a CPU, which is fast enough to stay ahead of a scene but far too slow to
+// start when the line is already due — hence prefetch(), which the run calls
+// for the next line while the current one is still playing.
 
 import { kokoroVoice } from './kokoro-voices.js';
 
@@ -22,13 +23,14 @@ let engine = null;
  *
  * Progress arrives per file with several in flight, so forwarding the reports
  * straight through makes a percentage jump between a 500-byte config at 90% and
- * the 88MB model at 3%. Summing does not rescue a percentage either: the
+ * the 326MB model at 3%. Summing does not rescue a percentage either: the
  * denominator only exists for files that have already announced themselves, so
  * the config finishing first reads as 100% and then sits there for the rest of
  * the download.
  *
- * Bytes downloaded have no denominator to be wrong about. They only ever go up,
- * and the screen already says roughly how many to expect.
+ * Reporting both figures instead lets the screen say "40 MB of 326 MB" — the
+ * denominator is measured rather than assumed, which matters because the size
+ * depends on which weights the device gets.
  */
 export function aggregateProgress(onProgress) {
   if (!onProgress) return undefined;

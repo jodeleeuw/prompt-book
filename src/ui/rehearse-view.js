@@ -178,8 +178,11 @@ export async function renderRehearse(id) {
     }
 
     const kokoro = assignKokoroVoices(script.characters);
-    const onProgress = ({ loaded }) => {
-      loadNote = `${Math.round((loaded ?? 0) / 1e6)} MB`;
+    // Measured against the download's own total, not a constant: the size
+    // depends on which weights this device gets, and they differ by 3.5x.
+    const onProgress = ({ loaded, total }) => {
+      const mb = (bytes) => Math.round(bytes / 1e6);
+      loadNote = total ? `${mb(loaded)} MB of ${mb(total)} MB` : `${mb(loaded)} MB`;
       paintLoading();
     };
 
@@ -262,7 +265,7 @@ export async function renderRehearse(id) {
 
     loadingCue.textContent = loadNote ? 'Fetching the voice model…' : 'Finding voices…';
     loadingHint.textContent = loadNote
-      ? `${loadNote} of about 100MB, downloaded once and kept for next time.`
+      ? `${loadNote} — downloaded once and kept for next time.`
       : 'Reading the voices installed on this device.';
 
     // Mounted once and then written into. Replacing the subtree restarts the
