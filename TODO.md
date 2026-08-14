@@ -53,12 +53,16 @@ for the original milestones and `.impeccable/critique/` for the design review.
       plan. Likely does more for how a run *feels* than voice quality does:
       right now one line ends and the next begins immediately, and real actors
       breathe.
-- [ ] **Per-character voice picker for the neural voices.** They are currently
-      auto-assigned from a curated list; setup lets you choose device voices but
-      not Kokoro ones.
 - [ ] **Persist generated audio.** A scene could be generated once and replayed
       offline forever, which would make the app *more* offline-capable rather
-      than less. Deferred because pipelining already covers the latency.
+      than less. Was deferred on the grounds that pipelining covered the
+      latency; the tablet says otherwise. The lookahead now hides a gap within
+      a run, but the *first* run of a scene still generates every line from
+      cold, and nothing survives a reload.
+- [ ] **Consider smaller weights for WebGPU.** `bestBackend` asks for fp32,
+      which is `model.onnx` at 326MB against 92MB for the quantised one every
+      other device gets. fp16 is 163MB and q8f16 is 86MB. Nobody has listened
+      to them side by side, which is the only way to decide it.
 
 ## From the design critique
 

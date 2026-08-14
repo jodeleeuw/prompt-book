@@ -113,21 +113,47 @@ export const isSupported = () =>
 /**
  * @param voiceFor   line -> Kokoro voice id
  * @param rate       speaking speed, 1 is normal
+ * @param load       how to get the model; replaced in tests, which have no
+ *                   business fetching 326MB to check a queue
  */
-export function createKokoroSpeaker({ voiceFor, rate = 1, onProgress } = {}) {
+export function createKokoroSpeaker({ voiceFor, rate = 1, onProgress, load = loadKokoro } = {}) {
   const audio = new AudioContext();
   const cache = new Map(); // key -> Promise<RawAudio>
   let source = null;
   let cancelled = false;
 
+  let queue = [];
+  let draining = false;
+
   const keyFor = (line, voice) => `${voice}|${rate}|${line.text}`;
+  const ready = (line) => cache.has(keyFor(line, kokoroVoice(voiceFor?.(line)).id));
+
+  /**
+   * Work through the lookahead one line at a time.
+   *
+   * The model generates serially whatever it is asked, so starting six lines at
+   * once does not make them arrive sooner — it makes the one needed next arrive
+   * last. In order, one at a time, is the whole trick.
+   */
+  async function drain() {
+    if (draining) return;
+    draining = true;
+    while (queue.length) {
+      try {
+        await generate(queue.shift());
+      } catch {
+        // A failed prefetch is not an error here: speak() will try it again.
+      }
+    }
+    draining = false;
+  }
 
   function generate(line) {
     const voice = kokoroVoice(voiceFor?.(line)).id;
     const key = keyFor(line, voice);
     if (cache.has(key)) return cache.get(key);
 
-    const pending = loadKokoro({ onProgress }).then(({ tts }) =>
+    const pending = load({ onProgress }).then(({ tts }) =>
       tts.generate(line.text, { voice, speed: rate }),
     );
     cache.set(key, pending);
@@ -138,11 +164,21 @@ export function createKokoroSpeaker({ voiceFor, rate = 1, onProgress } = {}) {
   }
 
   return {
-    /** Start work on a line that is coming up, so it is ready when due. */
-    prefetch(line) {
-      if (!line?.text) return;
-      generate(line).catch(() => {}); // a failed prefetch is retried by speak()
+    /**
+     * Start work on the lines that are coming up, nearest first.
+     *
+     * Takes the whole lookahead rather than one line, and replaces whatever was
+     * queued: the caller passes the window from wherever the run now is, so
+     * anything left over from the last position is by definition stale.
+     */
+    prefetch(lines) {
+      const wanted = (Array.isArray(lines) ? lines : [lines]).filter((line) => line?.text);
+      queue = wanted.filter((line) => !ready(line));
+      drain();
     },
+
+    /** Whether a line would play at once. Exposed for the tests. */
+    ready,
 
     speak(line) {
       cancelled = false;
@@ -180,6 +216,7 @@ export function createKokoroSpeaker({ voiceFor, rate = 1, onProgress } = {}) {
 
     close() {
       this.cancel();
+      queue = [];
       cache.clear();
       audio.close().catch(() => {});
     },

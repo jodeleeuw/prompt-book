@@ -15,6 +15,11 @@ import { navigate } from './router.js';
 const PEEK_MS = 3000;
 const TAPPABLE = new Set(['idle', 'awaiting', 'done', 'error']);
 
+// Partner lines kept generated ahead of the run. Enough to cover a stretch of
+// short exchanges, which is where a one-line lookahead runs out; well under the
+// speaker's own cache limit, so warming never evicts a line that is nearly due.
+const LOOKAHEAD = 6;
+
 export async function renderRehearse(id) {
   const loaded = await loadScript(id);
   if (!loaded) return message('Not found', 'That script is no longer in your library.');
@@ -158,8 +163,8 @@ export async function renderRehearse(id) {
     });
 
     sync(engine.state);
-    // So the opening line is ready the moment they tap Begin.
-    if (lines[0] && !isUserLine(lines[0])) speaker?.prefetch?.(lines[0]);
+    // So the opening lines are ready the moment they tap Begin.
+    warm(resumeIndex ? resumeIndex - 1 : -1);
   }
 
   /**
@@ -227,8 +232,8 @@ export async function renderRehearse(id) {
     if (micStatus === 'denied' || micStatus === 'error') micStatus = 'idle'; // let them retry
     else voiceWanted = !voiceWanted;
     sync(engine.state);
-    // So the opening line is ready the moment they tap Begin.
-    if (lines[0] && !isUserLine(lines[0])) speaker?.prefetch?.(lines[0]);
+    // So the opening lines are ready the moment they tap Begin.
+    warm(resumeIndex ? resumeIndex - 1 : -1);
   }
 
   function cycleHideLevel() {
@@ -294,19 +299,26 @@ export async function renderRehearse(id) {
       stopPeeking();
     }
     applyCueing(state);
-    prefetchNext(state);
+    warm(state.index);
     remember(state);
     render(state);
   }
 
   /**
-   * Generation runs at roughly 2.5x realtime, so a line started when it is
-   * already due would arrive late. Building the next one while the current
-   * one plays keeps it ahead of the scene.
+   * Keep a run of upcoming partner lines generated and waiting.
+   *
+   * One line of lookahead only covers the case where the line playing now is
+   * longer than the next one takes to build. That held on a laptop at 2.5x
+   * realtime; on a tablet it does not, and two partner lines in a row leave an
+   * audible gap. A window absorbs the difference — and it costs nothing extra,
+   * since the model works through it in order and stops when it runs dry.
    */
-  function prefetchNext(state) {
-    const next = lines[state.index + 1];
-    if (next && !isUserLine(next)) speaker?.prefetch?.(next);
+  function warm(from) {
+    const window = [];
+    for (let i = from + 1; i < lines.length && window.length < LOOKAHEAD; i++) {
+      if (!isUserLine(lines[i])) window.push(lines[i]);
+    }
+    if (window.length) speaker?.prefetch?.(window);
   }
 
   /** A finished run is not a place to come back to. */

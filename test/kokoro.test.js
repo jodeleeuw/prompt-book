@@ -81,3 +81,112 @@ test('reports with nothing to count are ignored rather than counted as zero', ()
 test('no callback means no wrapper, so nothing is done for nobody', () => {
   assert.equal(aggregateProgress(undefined), undefined);
 });
+
+// --- keeping ahead of the run ------------------------------------------------
+//
+// The model generates one line at a time whatever it is asked for, so the order
+// work is started in is the order it finishes in.
+
+import { createKokoroSpeaker } from '../src/speech/kokoro.js';
+
+globalThis.AudioContext = class {
+  close() {
+    return Promise.resolve();
+  }
+};
+
+/** A stand-in model that records what it was asked for, and in what order. */
+function fakeModel() {
+  const started = [];
+  let inFlight = 0;
+  let overlapped = false;
+  const pending = [];
+
+  const tts = {
+    generate: (text) => {
+      started.push(text);
+      inFlight += 1;
+      if (inFlight > 1) overlapped = true;
+      return new Promise((resolve) => {
+        pending.push(() => {
+          inFlight -= 1;
+          resolve({ audio: new Float32Array(1), sampling_rate: 24000 });
+        });
+      });
+    },
+  };
+
+  return {
+    started,
+    get overlapped() {
+      return overlapped;
+    },
+    /** Let the oldest outstanding generation finish. */
+    async settle(n = 1) {
+      for (let i = 0; i < n; i++) {
+        pending.shift()?.();
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    },
+    load: async () => ({ tts }),
+  };
+}
+
+const say = (text) => ({ text, characterId: 'c1' });
+
+test('the lookahead is generated in order, one at a time', async () => {
+  const model = fakeModel();
+  const speaker = createKokoroSpeaker({ load: model.load });
+
+  speaker.prefetch([say('one'), say('two'), say('three')]);
+  await model.settle(3);
+
+  assert.deepEqual(model.started, ['one', 'two', 'three']);
+  assert.equal(model.overlapped, false, 'three at once would make the next one arrive last');
+});
+
+test('a fresh window replaces the old one rather than queuing behind it', async () => {
+  const model = fakeModel();
+  const speaker = createKokoroSpeaker({ load: model.load });
+
+  speaker.prefetch([say('one'), say('two'), say('three')]);
+  // The run has moved on; 'two' and 'three' are behind it and no longer wanted.
+  speaker.prefetch([say('four'), say('five')]);
+  await model.settle(3);
+
+  assert.deepEqual(model.started, ['one', 'four', 'five'], 'stale lines are dropped');
+});
+
+test('a line already generated is not generated again', async () => {
+  const model = fakeModel();
+  const speaker = createKokoroSpeaker({ load: model.load });
+
+  speaker.prefetch([say('one'), say('two')]);
+  await model.settle(2);
+  assert.equal(speaker.ready(say('one')), true);
+
+  speaker.prefetch([say('one'), say('two'), say('three')]);
+  await model.settle(1);
+
+  assert.deepEqual(model.started, ['one', 'two', 'three'], 'only the new line');
+});
+
+test('lines with no text are skipped rather than queued', async () => {
+  const model = fakeModel();
+  const speaker = createKokoroSpeaker({ load: model.load });
+
+  speaker.prefetch([null, { text: '' }, say('one')]);
+  await model.settle(1);
+
+  assert.deepEqual(model.started, ['one']);
+});
+
+test('one line still works, since that is how the run asked before', async () => {
+  const model = fakeModel();
+  const speaker = createKokoroSpeaker({ load: model.load });
+
+  speaker.prefetch(say('one'));
+  await model.settle(1);
+
+  assert.deepEqual(model.started, ['one']);
+});
