@@ -35,7 +35,7 @@ async function resumable() {
   if (!last) return null;
 
   const loaded = await loadScript(last.scriptId);
-  if (!loaded?.script.userCharacterId) {
+  if (!loaded?.script.userCharacterIds.length) {
     clearLastRun();
     return null;
   }
@@ -101,8 +101,13 @@ const scriptList = (scripts, resume) =>
 /** The number an actor cares about is how many lines are theirs. */
 function describe(script, resume) {
   const parts = [plural(script.sceneCount ?? 0, 'scene')];
-  const mine = script.characters?.find((c) => c.id === script.userCharacterId);
-  if (mine) parts.push(`you play ${mine.name}`);
+  const ids = new Set(script.userCharacterIds ?? []);
+  const mine = script.characters?.filter((c) => ids.has(c.id)) ?? [];
+
+  // Two names still read as a cast list at a glance; more becomes a count, so
+  // the card keeps its one line.
+  if (mine.length && mine.length <= 2) parts.push(`you play ${mine.map((c) => c.name).join(' and ')}`);
+  else if (mine.length) parts.push(`you play ${mine.length} parts`);
   else parts.push(plural(script.characters?.length ?? 0, 'character'));
   if (resume?.script.id === script.id) parts.push('in progress');
   return parts.join(' · ');

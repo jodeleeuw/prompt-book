@@ -19,8 +19,8 @@ actor forgets the app is there.
 ## Product Purpose
 
 Prompt Book replaces the scene partner you do not have at eleven at night. You
-import a script, mark which character is yours, and the app speaks the other
-parts and listens for the end of yours.
+import a script, mark which parts are yours — often more than one, in a school
+production — and the app speaks the rest and listens for the end of yours.
 
 It is a rehearsal tool, not a memorisation game and not a grader. It does not
 score delivery, track streaks, or measure progress. The only thing it judges is

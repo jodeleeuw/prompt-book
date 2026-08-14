@@ -14,7 +14,9 @@ export async function renderSetup(id) {
   const voices = await loadVoices();
   const pool = voicePool(voices, lang);
 
-  let userCharacterId = script.userCharacterId ?? script.characters[0]?.id ?? null;
+  const mine = new Set(
+    script.userCharacterIds?.length ? script.userCharacterIds : [script.characters[0]?.id].filter(Boolean),
+  );
   const chosenScenes = new Set(script.sceneIds ?? scenes.map((scene) => scene.id));
   const voiceByCharacterId = assignVoices(script.characters, voices, { lang });
 
@@ -26,14 +28,15 @@ export async function renderSetup(id) {
   function whoAmI() {
     return section(
       'Who are you?',
-      'The app performs everyone else and waits for you.',
+      'Tick every part you read — one actor often covers several. The app performs everyone else and waits for you.',
       h(
         'div',
         { class: 'choices' },
         script.characters.map((character) =>
-          choice('radio', 'user-character', character.name, userCharacterId === character.id, () => {
-            userCharacterId = character.id;
-            paint(); // your own character drops out of the voice list
+          choice('checkbox', 'user-character', character.name, mine.has(character.id), (on) => {
+            if (on) mine.add(character.id);
+            else mine.delete(character.id);
+            paint(); // your own parts drop out of the voice list
           }),
         ),
       ),
@@ -69,7 +72,14 @@ export async function renderSetup(id) {
   // ---- voices -------------------------------------------------------------
 
   function voiceChoice() {
-    const others = script.characters.filter((character) => character.id !== userCharacterId);
+    const others = script.characters.filter((character) => !mine.has(character.id));
+
+    if (!others.length) {
+      return section(
+        'Voices',
+        'You have taken every part, so there is nothing for the app to speak. Rehearsal will still run — the lines appear on screen and you advance by tapping.',
+      );
+    }
 
     if (!isSupported() || !pool.length) {
       return section(
@@ -132,7 +142,7 @@ export async function renderSetup(id) {
   // ---- begin --------------------------------------------------------------
 
   function begin() {
-    const ready = Boolean(userCharacterId) && chosenScenes.size > 0;
+    const ready = mine.size > 0 && chosenScenes.size > 0;
     return h(
       'div',
       { class: 'actions sticky' },
@@ -144,7 +154,7 @@ export async function renderSetup(id) {
           disabled: !ready,
           onclick: async () => {
             await saveRehearsalSetup(script.id, {
-              userCharacterId,
+              userCharacterIds: script.characters.filter((c) => mine.has(c.id)).map((c) => c.id),
               sceneIds: scenes.filter((s) => chosenScenes.has(s.id)).map((s) => s.id),
               voiceByCharacterId,
             });
@@ -153,7 +163,7 @@ export async function renderSetup(id) {
         },
         'Start rehearsing',
       ),
-      !ready && h('span', { class: 'note' }, 'Choose your character and at least one scene.'),
+      !ready && h('span', { class: 'note' }, 'Choose at least one part and one scene.'),
     );
   }
 

@@ -28,9 +28,10 @@ export async function renderScript(id) {
 
   const { script, scenes } = loaded;
   const nameById = new Map(script.characters.map((c) => [c.id, c.name]));
-  const configured = Boolean(script.userCharacterId && script.sceneIds?.length);
+  const myIds = new Set(script.userCharacterIds);
+  const configured = Boolean(myIds.size && script.sceneIds?.length);
   const yourLines = scenes.reduce(
-    (n, scene) => n + scene.lines.filter((l) => l.characterId === script.userCharacterId).length,
+    (n, scene) => n + scene.lines.filter((l) => myIds.has(l.characterId)).length,
     0,
   );
 
@@ -59,7 +60,7 @@ export async function renderScript(id) {
   function lineRow(scene, line) {
     const row = h('p', { class: 'line' });
     const speaker = nameById.get(line.characterId) ?? 'Unknown';
-    const mine = line.characterId === script.userCharacterId;
+    const mine = myIds.has(line.characterId);
 
     const read = () =>
       row.replaceChildren(
@@ -205,7 +206,7 @@ export async function renderScript(id) {
       'p',
       { class: 'cast' },
       script.characters.map((c) =>
-        h('span', { class: `chip${c.id === script.userCharacterId ? ' mine' : ''}` }, c.name),
+        h('span', { class: `chip${myIds.has(c.id) ? ' mine' : ''}` }, c.name),
       ),
     ),
     scenes.length

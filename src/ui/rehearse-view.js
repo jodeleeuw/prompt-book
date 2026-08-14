@@ -25,7 +25,7 @@ export async function renderRehearse(id) {
     : scenes;
   const lines = runningOrder(chosen);
 
-  if (!script.userCharacterId || !lines.length) {
+  if (!script.userCharacterIds.length || !lines.length) {
     navigate(`#/script/${script.id}/setup`);
     return message('Setting up…', 'Choose your character and scenes first.');
   }
@@ -33,6 +33,7 @@ export async function renderRehearse(id) {
   const settings = getSettings();
   const lang = document.documentElement.lang || 'en';
   const nameById = new Map(script.characters.map((c) => [c.id, c.name]));
+  const myIds = new Set(script.userCharacterIds);
 
   // ---- state --------------------------------------------------------------
 
@@ -62,7 +63,12 @@ export async function renderRehearse(id) {
 
   // With no voices at all every line becomes one you read and tap past, so the
   // whole run counts as yours. Reads `silent`, which init() settles.
-  const isUserLine = (line) => silent || line.characterId === script.userCharacterId;
+  const isUserLine = (line) => silent || myIds.has(line.characterId);
+
+  // Reading one part, "You" says everything. Reading several, it withholds the
+  // one thing you need at the moment the line lands — which of them is speaking.
+  const myLabel = (characterId) =>
+    myIds.size > 1 ? `You · ${nameById.get(characterId) ?? ''}` : 'You';
 
   // Where this script was left, if it was left part-way through.
   const stored = getLastRun();
@@ -350,7 +356,13 @@ export async function renderRehearse(id) {
   /** Announce only whose turn it is, and only when it changes. */
   function announce(state) {
     let text = null;
-    if (state.status === 'awaiting') text = `Your line. ${state.line.text}`;
+    if (state.status === 'awaiting') {
+      const as =
+        myIds.size > 1 && myIds.has(state.line.characterId)
+          ? ` as ${nameById.get(state.line.characterId)}`
+          : '';
+      text = `Your line${as}. ${state.line.text}`;
+    }
     else if (state.status === 'speaking') text = `${nameById.get(state.line.characterId) ?? ''} speaking`;
     else if (state.status === 'done') text = 'End of the run.';
     else if (state.status === 'error') text = `Speech stopped. ${state.error ?? ''}`;
@@ -392,7 +404,7 @@ export async function renderRehearse(id) {
   }
 
   const masked = (state) => {
-    const mine = state.line.characterId === script.userCharacterId;
+    const mine = myIds.has(state.line.characterId);
     return mine && hideLevel !== 'full' && !peeking;
   };
 
@@ -426,7 +438,7 @@ export async function renderRehearse(id) {
       );
     }
 
-    const mine = state.line.characterId === script.userCharacterId;
+    const mine = myIds.has(state.line.characterId);
     const entering = !state.previous || state.previous.sceneId !== state.line.sceneId;
 
     return group(
@@ -443,7 +455,11 @@ export async function renderRehearse(id) {
       h(
         'p',
         { class: `line current${mine ? ' mine' : ''}${masked(state) ? ' masked' : ''}` },
-        h('span', { class: 'speaker' }, mine ? 'You' : (nameById.get(state.line.characterId) ?? '')),
+        h(
+          'span',
+          { class: 'speaker' },
+          mine ? myLabel(state.line.characterId) : (nameById.get(state.line.characterId) ?? ''),
+        ),
         h(
           'span',
           { class: 'speech' },
@@ -482,7 +498,7 @@ export async function renderRehearse(id) {
     }
     if (state.status === 'done') return [control('Start again', () => engine.restart())];
 
-    const isMine = state.line?.characterId === script.userCharacterId;
+    const isMine = myIds.has(state.line?.characterId);
     return [
       control('Back', () => engine.back(), state.index === 0),
       state.status === 'paused'

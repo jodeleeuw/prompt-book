@@ -11,15 +11,32 @@ const ordered = (scenes) => [...scenes].sort((a, b) => a.order - b.order);
 
 const scenesOf = async (scriptId) => ordered(await db.getAllBy('scenes', 'scriptId', scriptId));
 
+/**
+ * Fill in the parts the user reads as a list.
+ *
+ * One person often covers several small parts in a scene, so this is a list
+ * rather than a single id. Saves made before that was true hold one
+ * `userCharacterId`; they are widened here, on the way out of storage, so no
+ * view has to know both shapes and nobody has to set their script up again.
+ */
+const hydrate = (script) => ({
+  ...script,
+  userCharacterIds: Array.isArray(script.userCharacterIds)
+    ? script.userCharacterIds
+    : script.userCharacterId
+      ? [script.userCharacterId]
+      : [],
+});
+
 export async function listScripts() {
   const scripts = await db.getAll('scripts');
-  return scripts.sort((a, b) => b.createdAt - a.createdAt);
+  return scripts.sort((a, b) => b.createdAt - a.createdAt).map(hydrate);
 }
 
 export async function loadScript(id) {
   const script = await db.get('scripts', id);
   if (!script) return null;
-  return { script, scenes: await scenesOf(id) };
+  return { script: hydrate(script), scenes: await scenesOf(id) };
 }
 
 /**
@@ -80,7 +97,7 @@ export async function deleteScript(id) {
  * between sessions; a voice that no longer exists on the device is reassigned
  * at setup rather than failing silently at rehearsal.
  */
-export async function saveRehearsalSetup(scriptId, { userCharacterId, sceneIds, voiceByCharacterId }) {
+export async function saveRehearsalSetup(scriptId, { userCharacterIds, sceneIds, voiceByCharacterId }) {
   const script = await db.get('scripts', scriptId);
   if (!script) return;
 
@@ -89,8 +106,12 @@ export async function saveRehearsalSetup(scriptId, { userCharacterId, sceneIds, 
     voiceURI: voiceByCharacterId?.[character.id] ?? character.voiceURI ?? null,
   }));
 
+  // The superseded single-id field goes rather than lingering as a second,
+  // quietly disagreeing answer to the same question.
+  const { userCharacterId: _superseded, ...rest } = script;
+
   await db.transact([
-    { store: 'scripts', put: { ...script, characters, userCharacterId, sceneIds } },
+    { store: 'scripts', put: { ...rest, characters, userCharacterIds, sceneIds } },
   ]);
 }
 
