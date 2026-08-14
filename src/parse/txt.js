@@ -47,6 +47,7 @@ export function parseText(input) {
   const scenes = [];
   let scene = { title: null, lines: [] };
   let speaker = null;
+  let labelled = false; // the speaker came from a "NAME:" prefix, not a bare cue
   let current = null; // open speech, so wrapped lines join one utterance
 
   const flush = () => {
@@ -56,6 +57,7 @@ export function parseText(input) {
     flush();
     scene = { title: title || null, lines: [] };
     speaker = null;
+    labelled = false;
     current = null;
   };
 
@@ -63,8 +65,18 @@ export function parseText(input) {
     const line = raw.trim();
 
     if (!line) {
-      speaker = null;
+      // A blank line always ends the current utterance, so a speech broken into
+      // paragraphs becomes several rehearsable lines rather than one long one.
+      //
+      // Whether it also ends the *speech* depends on the convention in use. A
+      // bare cue on its own line is screenplay form, where a blank line ends
+      // the speech outright. A "NAME:" prefix is not: the label belongs to the
+      // paragraph, every new speaker restates their own name, and an unlabelled
+      // paragraph after one is far more often the same character carrying on
+      // than it is stage business. Resetting there dropped eight consecutive
+      // paragraphs of one part into directions, which commit then discards.
       current = null;
+      if (!labelled) speaker = null;
       continue;
     }
     if (DIVIDER.test(line)) {
@@ -84,12 +96,14 @@ export function parseText(input) {
     const m = line.match(SPEAKER_COLON);
     if (m && isSpeakerLabel(m[1])) {
       speaker = cleanName(m[1]);
+      labelled = true;
       current = dialogue(speaker, m[2].trim());
       scene.lines.push(current);
       continue;
     }
     if (isNameOnly(line)) {
       speaker = cleanName(line);
+      labelled = false;
       current = null;
       continue;
     }

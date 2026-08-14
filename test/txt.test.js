@@ -94,3 +94,46 @@ test('drops empty scenes and blank lines', () => {
   assert.equal(scenes.length, 1);
   assert.equal(scenes[0].lines.length, 1);
 });
+
+// --- a speech broken into paragraphs -----------------------------------------
+
+test('a labelled speech split by a blank line stays with that character', () => {
+  // Directions are discarded on commit, so guessing wrong here does not just
+  // mislabel the paragraph, it deletes it.
+  const { scenes } = parseText(
+    'HAMLET: To be, or not to be.\n\nThat is the question.\n\nHORATIO: My lord?',
+  );
+  assert.deepEqual(
+    scenes[0].lines.map((l) => [l.kind, l.character, l.text]),
+    [
+      ['dialogue', 'HAMLET', 'To be, or not to be.'],
+      ['dialogue', 'HAMLET', 'That is the question.'],
+      ['dialogue', 'HORATIO', 'My lord?'],
+    ],
+  );
+});
+
+test('a bare cue still ends at a blank line, as screenplay form means it to', () => {
+  const { scenes } = parseText('HAMLET\nTo be, or not to be.\n\nHe turns away.');
+  assert.deepEqual(
+    scenes[0].lines.map((l) => l.kind),
+    ['dialogue', 'direction'],
+  );
+});
+
+test('a wrapped direction between paragraphs does not become the speech', () => {
+  const { scenes } = parseText('HAMLET: To be.\n\n(He turns away.)\n\nOr not to be.');
+  assert.deepEqual(
+    scenes[0].lines.map((l) => [l.kind, l.character]),
+    [
+      ['dialogue', 'HAMLET'],
+      ['direction', null],
+      ['dialogue', 'HAMLET'],
+    ],
+  );
+});
+
+test('a scene break ends the speech, so the next paragraph is not attributed', () => {
+  const { scenes } = parseText('HAMLET: To be.\n\n---\n\nThe court assembles.');
+  assert.equal(scenes[1].lines[0].kind, 'direction');
+});
