@@ -97,13 +97,19 @@ export async function deleteScript(id) {
  * between sessions; a voice that no longer exists on the device is reassigned
  * at setup rather than failing silently at rehearsal.
  */
-export async function saveRehearsalSetup(scriptId, { userCharacterIds, sceneIds, voiceByCharacterId }) {
+export async function saveRehearsalSetup(
+  scriptId,
+  { userCharacterIds, sceneIds, voiceByCharacterId, kokoroByCharacterId },
+) {
   const script = await db.get('scripts', scriptId);
   if (!script) return;
 
+  // Both kinds are kept: switching quality in Settings and back should not cost
+  // you the casting you did on the other side of the switch.
   const characters = script.characters.map((character) => ({
     ...character,
     voiceURI: voiceByCharacterId?.[character.id] ?? character.voiceURI ?? null,
+    kokoroVoice: kokoroByCharacterId?.[character.id] ?? character.kokoroVoice ?? null,
   }));
 
   // The superseded single-id field goes rather than lingering as a second,

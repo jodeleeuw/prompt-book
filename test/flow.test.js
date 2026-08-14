@@ -649,3 +649,119 @@ test('a setup saved before parts were a list still loads', async () => {
 
   await deleteScript(id);
 });
+
+// --- choosing between the two kinds of voice ---------------------------------
+
+const withHighQuality = async (fn, { supported = true } = {}) => {
+  updateSettings({ voiceQuality: 'high' });
+  // kokoro's support check wants an AudioContext, which jsdom has no notion of.
+  if (supported) globalThis.AudioContext = class {};
+  try {
+    return await fn();
+  } finally {
+    delete globalThis.AudioContext;
+    updateSettings({ voiceQuality: 'device' });
+  }
+};
+
+test('with high quality on, setup offers the neural voices and says how good each is', async () => {
+  const id = await twoHander();
+  const { script, scenes } = await loadScript(id);
+  await saveRehearsalSetup(id, {
+    userCharacterIds: [script.characters.find((c) => c.name === 'MIRA').id],
+    sceneIds: scenes.map((s) => s.id),
+  });
+
+  await withHighQuality(async () => {
+    const view = mount(await renderSetup(id));
+
+    const options = [...view.querySelectorAll('.voice-select option')];
+    assert.ok(options.length, 'the run speaks in these, so they are what setup must offer');
+    assert.ok(
+      options.every((o) => /^[a-z]{2}_[a-z]+$/.test(o.value)),
+      'neural voice ids, not device voiceURIs',
+    );
+    // The question the screen has to answer is which ones are the good ones.
+    assert.match(options[0].textContent, /Heart · American female · A/);
+    assert.match(view.textContent, /grade is the model’s own rating/);
+  });
+
+  await deleteScript(id);
+});
+
+test('a neural voice chosen in setup is the one the run uses', async () => {
+  const id = await twoHander();
+  const { script, scenes } = await loadScript(id);
+  await saveRehearsalSetup(id, {
+    userCharacterIds: [script.characters.find((c) => c.name === 'MIRA').id],
+    sceneIds: scenes.map((s) => s.id),
+  });
+
+  await withHighQuality(async () => {
+    const view = mount(await renderSetup(id));
+    const select = view.querySelector('.voice-select');
+    select.value = 'bm_george';
+    select.dispatchEvent(new window.Event('change'));
+    view.querySelector('.actions .primary').click();
+
+    const saved = await eventually(async () => {
+      const { script: s } = await loadScript(id);
+      return s.characters.find((c) => c.name === 'DEV')?.kokoroVoice ? s : null;
+    });
+    assert.equal(saved.characters.find((c) => c.name === 'DEV').kokoroVoice, 'bm_george');
+  });
+
+  await deleteScript(id);
+});
+
+test('a browser that cannot run the neural voices falls back to the device list', async () => {
+  const id = await twoHander();
+  const { script, scenes } = await loadScript(id);
+  await saveRehearsalSetup(id, {
+    userCharacterIds: [script.characters.find((c) => c.name === 'MIRA').id],
+    sceneIds: scenes.map((s) => s.id),
+  });
+
+  globalThis.speechSynthesis = {
+    getVoices: () => [{ name: 'Alice', voiceURI: 'uri:Alice', lang: 'en-GB', localService: true }],
+    addEventListener() {},
+    removeEventListener() {},
+  };
+
+  await withHighQuality(
+    async () => {
+      const view = await renderSetup(id);
+      assert.match(view.textContent, /cannot run them, so the device voices below/i);
+      assert.deepEqual(
+        [...view.querySelectorAll('.voice-select option')].map((o) => o.value),
+        ['uri:Alice'],
+      );
+    },
+    { supported: false },
+  );
+
+  delete globalThis.speechSynthesis;
+  await deleteScript(id);
+});
+
+test('and says so plainly when there are no voices of either kind', async () => {
+  const id = await twoHander();
+  const { script, scenes } = await loadScript(id);
+  await saveRehearsalSetup(id, {
+    userCharacterIds: [script.characters.find((c) => c.name === 'MIRA').id],
+    sceneIds: scenes.map((s) => s.id),
+  });
+
+  // No AudioContext and no speechSynthesis. Rendering an empty picker here
+  // reads as a broken screen; it used to throw on the empty list instead.
+  await withHighQuality(
+    async () => {
+      const view = await renderSetup(id);
+      assert.match(view.textContent, /no voices of its own either/i);
+      assert.equal(view.querySelectorAll('.voice-select').length, 0);
+    },
+    { supported: false },
+  );
+
+  await deleteScript(id);
+});

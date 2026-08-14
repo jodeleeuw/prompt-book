@@ -3,6 +3,8 @@ import { section, choice } from './controls.js';
 import { loadScript, saveRehearsalSetup } from '../store/library.js';
 import { loadVoices, createSpeaker, isSupported } from '../speech/tts.js';
 import { assignVoices, voicePool, findVoice } from '../speech/voices.js';
+import { KOKORO_VOICES, assignKokoroVoices } from '../speech/kokoro-voices.js';
+import { getSettings } from '../store/settings.js';
 import { navigate } from './router.js';
 
 export async function renderSetup(id) {
@@ -14,11 +16,20 @@ export async function renderSetup(id) {
   const voices = await loadVoices();
   const pool = voicePool(voices, lang);
 
+  // Which set of voices this screen is choosing between is decided in Settings,
+  // and it has to be the set the run will actually use. Offering the device
+  // list while the run speaks in neural voices makes every choice here a no-op
+  // that looks like it worked.
+  const wantsHighQuality = getSettings().voiceQuality === 'high';
+  const kokoro = wantsHighQuality ? await import('../speech/kokoro.js') : null;
+  const neural = Boolean(kokoro?.isSupported());
+
   const mine = new Set(
     script.userCharacterIds?.length ? script.userCharacterIds : [script.characters[0]?.id].filter(Boolean),
   );
   const chosenScenes = new Set(script.sceneIds ?? scenes.map((scene) => scene.id));
   const voiceByCharacterId = assignVoices(script.characters, voices, { lang });
+  const kokoroByCharacterId = assignKokoroVoices(script.characters);
 
   const body = h('div');
   const paint = () => body.replaceChildren(whoAmI(), sceneChoice(), voiceChoice(), begin());
@@ -81,55 +92,146 @@ export async function renderSetup(id) {
       );
     }
 
-    if (!isSupported() || !pool.length) {
+    if (neural) return neuralVoices(others);
+
+    const silent =
+      'Rehearsal will still run — the lines appear on screen and you advance by tapping.';
+    const noDeviceVoices = !isSupported() || !pool.length;
+
+    if (wantsHighQuality) {
+      return noDeviceVoices
+        ? section(
+            'Voices',
+            `High quality voices are turned on in Settings, but this browser cannot run them, and the device has no voices of its own either. ${silent}`,
+          )
+        : section(
+            'Voices',
+            'High quality voices are turned on in Settings, but this browser cannot run them, so the device voices below will be used instead.',
+            deviceRows(others),
+          );
+    }
+
+    if (noDeviceVoices) {
       return section(
         'Voices',
-        'This device reported no speech voices, so the other parts cannot be spoken. Rehearsal will still run — the lines appear on screen and you advance by tapping.',
+        `This device reported no speech voices, so the other parts cannot be spoken. ${silent}`,
       );
     }
 
     return section(
       'Voices',
       `Each character has been given a different voice${pool.length < others.length ? ', though this device has fewer voices than characters, so some are shared' : ''}.`,
+      deviceRows(others),
+    );
+  }
+
+  /** A row per character: name, the voice it will speak in, and a way to hear it. */
+  const voiceRow = (character, select, hear) =>
+    h('div', { class: 'voice-row' }, h('span', { class: 'speaker' }, character.name), select, hear);
+
+  function deviceRows(others) {
+    return h(
+      'div',
+      { class: 'voice-rows' },
+      others.map((character) => {
+        const select = h('select', { class: 'voice-select', 'aria-label': `Voice for ${character.name}` });
+        select.append(
+          ...pool.map((voice) => h('option', { value: voice.voiceURI }, voiceLabel(voice))),
+        );
+        // `?.` because an empty pool must not blank the whole screen: the
+        // callers guard against it, and a future one might forget.
+        select.value = voiceByCharacterId[character.id] ?? pool[0]?.voiceURI ?? '';
+        select.addEventListener('change', () => {
+          voiceByCharacterId[character.id] = select.value;
+        });
+
+        return voiceRow(
+          character,
+          select,
+          h(
+            'button',
+            {
+              class: 'button',
+              type: 'button',
+              // Also the gesture that unlocks audio on a fresh page load.
+              onclick: () => {
+                const speaker = createSpeaker({
+                  voiceFor: () => findVoice(voices, select.value),
+                });
+                speaker.cancel();
+                speaker.speak({ text: sampleFor(character) }).catch(() => {});
+              },
+            },
+            'Hear',
+          ),
+        );
+      }),
+    );
+  }
+
+  // ---- the neural voices ----------------------------------------------------
+
+  // One preview speaker for the screen, not one per press: each carries an
+  // AudioContext, and a browser allows only a handful of those.
+  let preview = null;
+  let previewVoice = KOKORO_VOICES[0].id;
+
+  function neuralVoices(others) {
+    return section(
+      'Voices',
+      'High quality voices, generated on this device. The grade is the model’s own rating of each voice — A is its best. Device voices are chosen in Settings instead.',
       h(
         'div',
         { class: 'voice-rows' },
         others.map((character) => {
-          const select = h('select', { class: 'voice-select', 'aria-label': `Voice for ${character.name}` });
-          select.append(
-            ...pool.map((voice) => h('option', { value: voice.voiceURI }, voiceLabel(voice))),
-          );
-          select.value = voiceByCharacterId[character.id] ?? pool[0].voiceURI;
-          select.addEventListener('change', () => {
-            voiceByCharacterId[character.id] = select.value;
+          const select = h('select', {
+            class: 'voice-select',
+            'aria-label': `Voice for ${character.name}`,
           });
-
-          return h(
-            'div',
-            { class: 'voice-row' },
-            h('span', { class: 'speaker' }, character.name),
-            select,
-            h(
-              'button',
-              {
-                class: 'button',
-                type: 'button',
-                // Also the gesture that unlocks audio on a fresh page load.
-                onclick: () => {
-                  const speaker = createSpeaker({
-                    voiceFor: () => findVoice(voices, select.value),
-                  });
-                  speaker.cancel();
-                  speaker.speak({ text: sampleFor(character) }).catch(() => {});
-                },
-              },
-              'Hear',
+          select.append(
+            ...KOKORO_VOICES.map((voice) =>
+              h('option', { value: voice.id }, kokoroLabel(voice)),
             ),
           );
+          select.value = kokoroByCharacterId[character.id] ?? KOKORO_VOICES[0].id;
+          select.addEventListener('change', () => {
+            kokoroByCharacterId[character.id] = select.value;
+          });
+
+          const hear = h(
+            'button',
+            { class: 'button', type: 'button', onclick: () => hearNeural(character, select, hear) },
+            'Hear',
+          );
+
+          return voiceRow(character, select, hear);
         }),
       ),
     );
   }
+
+  /**
+   * Generating a line takes real time — and the first press of the session also
+   * loads the model — so the button says what it is doing rather than looking
+   * broken while it does it.
+   */
+  async function hearNeural(character, select, hear) {
+    previewVoice = select.value;
+    hear.disabled = true;
+    hear.textContent = 'Preparing…';
+    try {
+      preview ??= kokoro.createKokoroSpeaker({ voiceFor: () => previewVoice });
+      preview.cancel();
+      await preview.speak({ text: sampleFor(character) });
+      hear.textContent = 'Hear';
+    } catch {
+      hear.textContent = 'Unavailable';
+    }
+    hear.disabled = false;
+  }
+
+  const kokoroLabel = (voice) =>
+    `${voice.label} · ${voice.accent} ${voice.gender.toLowerCase()} · ${voice.grade}`;
 
   const sampleFor = (character) => {
     for (const scene of scenes) {
@@ -157,6 +259,7 @@ export async function renderSetup(id) {
               userCharacterIds: script.characters.filter((c) => mine.has(c.id)).map((c) => c.id),
               sceneIds: scenes.filter((s) => chosenScenes.has(s.id)).map((s) => s.id),
               voiceByCharacterId,
+              kokoroByCharacterId,
             });
             navigate(`#/script/${script.id}/rehearse`);
           },
@@ -168,6 +271,17 @@ export async function renderSetup(id) {
   }
 
   paint();
+
+  // The preview holds an AudioContext, and leaving the screen without closing
+  // it would strand one per visit until the browser refuses to make more.
+  const teardown = () => {
+    preview?.close();
+    preview = null;
+    window.removeEventListener('hashchange', teardown);
+    window.removeEventListener('pagehide', teardown);
+  };
+  window.addEventListener('hashchange', teardown);
+  window.addEventListener('pagehide', teardown);
 
   return h(
     'main',
